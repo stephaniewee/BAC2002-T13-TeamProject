@@ -1,10 +1,17 @@
 {
   "name": "bac2002-t13-teamproject",
   "version": "1.0.0",
-  "description": "",
+  "description": "FreelanceChain smart contracts + frontend in a single root package",
+  "private": true,
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.js --network sepolia",
+    "frontend:dev": "vite frontend --config frontend/vite.config.js",
+    "frontend:build": "vite build frontend --config frontend/vite.config.js",
+    "frontend:preview": "vite preview frontend --config frontend/vite.config.js",
+    "frontend:lint": "eslint frontend --config frontend/eslint.config.js"
   },
   "repository": {
     "type": "git",
@@ -20,11 +27,30 @@
   "homepage": "https://github.com/stephaniewee/BAC2002-T13-TeamProject#readme",
   "devDependencies": {
     "@chainlink/contracts": "^1.5.0",
+    "@eslint/js": "^9.39.4",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.6.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
     "dotenv": "^17.3.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
     "hardhat": "^2.22.17",
     "hardhat-gas-reporter": "^1.0.10",
-    "solidity-coverage": "^0.8.17"
+    "postcss": "^8.5.8",
+    "solidity-coverage": "^0.8.17",
+    "tailwindcss": "^3.4.17",
+    "vite": "^8.0.1"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "ethers": "^6.16.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1"
   }
 }

@@ -77,6 +77,14 @@ ALCHEMY_SEPOLIA_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
 PRIVATE_KEY=YOUR_WALLET_PRIVATE_KEY
 ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY
 ARBITRATOR_ADDRESS=YOUR_ARBITRATOR_WALLET_ADDRESS
+
+VITE_ESCROW_ADDRESS=0x...
+VITE_FACTORY_ADDRESS=0x...
+VITE_SBT_ADDRESS=0x...
+VITE_USDC_ADDRESS=0x...
+VITE_RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+VITE_CHAIN_ID=11155111
+VITE_API_URL=http://localhost:3001
 ```
 
 > Get a free Alchemy API key at https://alchemy.com
@@ -113,6 +121,19 @@ EscrowContract
 ## Run Gas Report
 ```bash
 REPORT_GAS=true npx hardhat test
+```
+
+---
+
+## Run Frontend
+```bash
+npm run frontend:dev
+```
+
+Build and preview:
+```bash
+npm run frontend:build
+npm run frontend:preview
 ```
 
 ---
