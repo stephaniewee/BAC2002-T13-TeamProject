@@ -154,9 +154,9 @@ const Home = () => {
 
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Quick Actions</h2>
-          <div className="space-y-3">
+          <div className="flex flex-col gap-6">
             {dashboard.actions.map((action) => (
-              <Link key={action.label} to={action.to}>
+              <Link key={action.label} to={action.to} className="block">
                 <button className={`w-full py-3 rounded-lg font-semibold ${action.primary ? 'btn-primary' : 'btn-secondary'}`}>
                   {action.label}
                 </button>

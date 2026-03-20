@@ -1,7 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MILESTONE_STATUS, USER_ROLES } from '../constants/contracts';
 
-const MilestoneCard = ({ milestone, index, userRole }) => {
+const MilestoneCard = ({
+  milestone,
+  index,
+  userRole,
+  onSubmitWork,
+  onApprove,
+  onDispute,
+  txState,
+}) => {
+  const [deliverableHash, setDeliverableHash] = useState('');
+
   const getStatusColor = (status) => {
     switch (status) {
       case MILESTONE_STATUS.PENDING:
@@ -12,6 +22,8 @@ const MilestoneCard = ({ milestone, index, userRole }) => {
         return { bg: 'bg-green-100', text: 'text-green-700' };
       case MILESTONE_STATUS.DISPUTED:
         return { bg: 'bg-red-100', text: 'text-red-700' };
+      case MILESTONE_STATUS.RESOLVED:
+        return { bg: 'bg-purple-100', text: 'text-purple-700' };
       default:
         return { bg: 'bg-gray-100', text: 'text-gray-700' };
     }
@@ -23,6 +35,7 @@ const MilestoneCard = ({ milestone, index, userRole }) => {
     [MILESTONE_STATUS.SUBMITTED]: '📤',
     [MILESTONE_STATUS.APPROVED]: '✓',
     [MILESTONE_STATUS.DISPUTED]: '⚠',
+    [MILESTONE_STATUS.RESOLVED]: '🏁',
   };
 
   return (
@@ -56,20 +69,53 @@ const MilestoneCard = ({ milestone, index, userRole }) => {
 
       {milestone.status === MILESTONE_STATUS.PENDING && userRole === USER_ROLES.FREELANCER && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
-          <button className="flex-1 btn-primary text-sm py-2">Submit Work</button>
+          <input
+            type="text"
+            value={deliverableHash}
+            onChange={(event) => setDeliverableHash(event.target.value)}
+            placeholder="Deliverable hash (bytes32, 0x...64 hex)"
+            className="flex-1 input-base text-sm"
+          />
+          <button
+            onClick={() => onSubmitWork(milestone.id, deliverableHash)}
+            disabled={txState.loading}
+            className="btn-primary text-sm py-2 px-4"
+          >
+            {txState.loading ? 'Submitting...' : 'Submit Work'}
+          </button>
         </div>
       )}
 
       {milestone.status === MILESTONE_STATUS.SUBMITTED && userRole === USER_ROLES.CLIENT && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
-          <button className="flex-1 btn-success text-sm py-2">Approve</button>
-          <button className="flex-1 btn-danger text-sm py-2">Dispute</button>
+          <button
+            onClick={() => onApprove(milestone.id)}
+            disabled={txState.loading}
+            className="flex-1 btn-success text-sm py-2"
+          >
+            {txState.loading ? 'Processing...' : 'Approve'}
+          </button>
+          <button
+            onClick={() => onDispute(milestone.id)}
+            disabled={txState.loading}
+            className="flex-1 btn-danger text-sm py-2"
+          >
+            {txState.loading ? 'Processing...' : 'Dispute'}
+          </button>
         </div>
       )}
 
       {milestone.status === MILESTONE_STATUS.DISPUTED && userRole === USER_ROLES.ARBITRATOR && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
           <button className="flex-1 btn-primary text-sm py-2">Open Arbitration</button>
+        </div>
+      )}
+
+      {(txState.message || txState.error || txState.txHash) && (
+        <div className={`mt-4 p-3 rounded-lg border text-xs ${txState.error ? 'border-red-200 bg-red-50 text-red-700' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+          {txState.message && <p>{txState.message}</p>}
+          {txState.txHash && <p className="break-all mt-1">Tx: {txState.txHash}</p>}
+          {txState.error && <p>{txState.error}</p>}
         </div>
       )}
     </div>

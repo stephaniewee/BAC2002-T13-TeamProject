@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import MilestoneCard from '../components/MilestoneCard';
 import ReputationBadge from '../components/ReputationBadge';
 import { useWallet } from '../hooks/useWallet';
-import { USER_ROLES } from '../constants/contracts';
+import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
+import { ensureSepoliaNetwork, getEscrowReadContract, getEscrowWriteContract } from '../utils/contracts';
 
 const ROLE_ACTIONS = {
   [USER_ROLES.CLIENT]: {
@@ -23,60 +24,155 @@ const ROLE_ACTIONS = {
   },
 };
 
-const JobDetail = () => {
-  // In a real app, this would fetch data from an API or smart contract
-  const { id } = useParams();
-  const { userRole, roleSource } = useWallet();
-  const currentActions = ROLE_ACTIONS[userRole] || ROLE_ACTIONS[USER_ROLES.FREELANCER];
+const ESCROW_STATE_TO_UI = {
+  0: 'pending', // CREATED
+  1: 'pending', // FUNDED
+  2: 'pending', // IN_PROGRESS
+  3: 'submitted', // PENDING_REVIEW
+  4: 'approved', // COMPLETED
+  5: 'disputed', // DISPUTED
+  6: 'resolved', // RESOLVED
+};
 
-  // Mock job data
+const formatDate = (unixSeconds) => {
+  if (!unixSeconds) return '-';
+  return new Date(Number(unixSeconds) * 1000).toLocaleDateString();
+};
+
+const isBytes32 = (value) => /^0x[0-9a-fA-F]{64}$/.test(value || '');
+
+const JobDetail = () => {
+  const { id } = useParams();
+  const { userRole, roleSource, provider, signer } = useWallet();
+  const currentActions = ROLE_ACTIONS[userRole] || ROLE_ACTIONS[USER_ROLES.FREELANCER];
+  const [milestone, setMilestone] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [txState, setTxState] = useState({ loading: false, message: '', error: '', txHash: '' });
+
+  const milestoneId = Number(id);
+
+  const loadMilestone = useCallback(async () => {
+    if (!provider) {
+      return;
+    }
+
+    if (Number.isNaN(milestoneId)) {
+      setError('Invalid milestone id in URL.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      await ensureSepoliaNetwork(provider);
+
+      const escrow = getEscrowReadContract(provider);
+      const total = Number(await escrow.milestoneCount());
+      if (milestoneId < 0 || milestoneId >= total) {
+        throw new Error(`Milestone ${milestoneId} was not found on-chain.`);
+      }
+
+      const chainMilestone = await escrow.milestones(milestoneId);
+      const amountUSD = Number(chainMilestone.amountUSD) / 1e8;
+
+      setMilestone({
+        id: milestoneId,
+        title: `Escrow Milestone #${milestoneId}`,
+        description: chainMilestone.deliverableHash === '0x0000000000000000000000000000000000000000000000000000000000000000'
+          ? 'No deliverable submitted yet.'
+          : `Deliverable hash submitted: ${chainMilestone.deliverableHash}`,
+        amount: amountUSD.toFixed(2),
+        status: ESCROW_STATE_TO_UI[Number(chainMilestone.state)] || 'pending',
+        deadline: formatDate(chainMilestone.deadline),
+        releaseTime: '-',
+        deliverables: [],
+        client: chainMilestone.client,
+        freelancer: chainMilestone.freelancer,
+        lockedETH: chainMilestone.lockedETH,
+      });
+    } catch (loadError) {
+      setError(loadError?.shortMessage || loadError?.message || 'Failed to load milestone data.');
+    } finally {
+      setLoading(false);
+    }
+  }, [provider, milestoneId]);
+
+  useEffect(() => {
+    loadMilestone();
+  }, [loadMilestone]);
+
+  const runWriteTx = async (message, call) => {
+    try {
+      if (!provider || !signer) {
+        throw new Error('Wallet signer not available. Reconnect MetaMask and try again.');
+      }
+
+      await ensureSepoliaNetwork(provider);
+      setTxState({ loading: true, message, error: '', txHash: '' });
+      const tx = await call();
+      setTxState({ loading: true, message: 'Waiting for confirmation...', error: '', txHash: tx.hash });
+      await tx.wait();
+      setTxState({ loading: false, message: 'Transaction confirmed.', error: '', txHash: tx.hash });
+      await loadMilestone();
+    } catch (txError) {
+      setTxState({ loading: false, message: '', error: txError?.shortMessage || txError?.message || 'Transaction failed.', txHash: '' });
+    }
+  };
+
+  const handleSubmitWork = async (targetMilestoneId, deliverableHash) => {
+    if (!isBytes32(deliverableHash)) {
+      setTxState({ loading: false, message: '', error: 'Deliverable hash must be bytes32 (0x + 64 hex chars).', txHash: '' });
+      return;
+    }
+
+    const escrow = getEscrowWriteContract(signer);
+    await runWriteTx('Submitting milestone deliverable...', () => escrow.submitWork(targetMilestoneId, deliverableHash));
+  };
+
+  const handleApprove = async (targetMilestoneId) => {
+    const escrow = getEscrowWriteContract(signer);
+    await runWriteTx('Approving milestone and releasing funds...', () => escrow.approveMilestone(targetMilestoneId));
+  };
+
+  const handleDispute = async (targetMilestoneId) => {
+    const escrow = getEscrowWriteContract(signer);
+    await runWriteTx('Raising dispute for this milestone...', () => escrow.raiseDispute(targetMilestoneId));
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        <div className="card text-center py-12">Loading milestone from chain...</div>
+      </div>
+    );
+  }
+
+  if (error || !milestone) {
+    return (
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        <div className="card text-center py-12 text-red-700">{error || 'Milestone not found.'}</div>
+      </div>
+    );
+  }
+
   const job = {
-    id,
-    title: 'UI Design for SaaS Dashboard',
-    description: 'Create a modern, responsive dashboard UI with dark mode support for our crypto analytics platform. The design should be clean, intuitive, and follow modern design principles.',
+    id: milestone.id,
+    title: milestone.title,
+    description: 'On-chain escrow milestone details from the deployed EscrowContract.',
     client: {
-      address: '0x742d...B8c0',
-      name: 'John Doe',
-      tier: 'GOLD',
-      jobsCompleted: 15,
-      escrowAmount: 1500,
+      address: milestone.client,
+      name: 'On-chain Client',
+      tier: 'SILVER',
+      jobsCompleted: '-',
+      escrowAmount: `${milestone.amount} USD`,
     },
-    totalAmount: 1500,
-    status: 'in_progress',
-    createdAt: '2024-03-10',
-    deadline: '2024-04-10',
-    milestones: [
-      {
-        id: 1,
-        title: 'Wireframes & User Flow',
-        description: 'Create wireframes for all main pages and define user flows',
-        amount: 500,
-        status: 'approved',
-        deadline: '2024-03-20',
-        releaseTime: 1,
-        deliverables: ['Figma file with wireframes', 'User flow diagram'],
-      },
-      {
-        id: 2,
-        title: 'High-Fidelity Designs',
-        description: 'Create detailed, polished designs with all components and states',
-        amount: 600,
-        status: 'submitted',
-        deadline: '2024-03-30',
-        releaseTime: 3,
-        deliverables: ['Figma design file', 'Design system', 'Component library'],
-      },
-      {
-        id: 3,
-        title: 'Interactive Prototype & Handoff',
-        description: 'Create interactive prototype and prepare handoff document for developers',
-        amount: 400,
-        status: 'pending',
-        deadline: '2024-04-10',
-        releaseTime: 5,
-        deliverables: ['Interactive prototype', 'Handoff document', 'CSS specifications'],
-      },
-    ],
+    totalAmount: milestone.amount,
+    status: milestone.status,
+    createdAt: '-',
+    deadline: milestone.deadline,
+    milestones: [milestone],
   };
 
   return (
@@ -136,7 +232,7 @@ const JobDetail = () => {
       <div className="grid grid-cols-3 gap-4 mb-12">
         <div className="card text-center">
           <p className="text-gray-600 text-sm mb-2">Total Amount</p>
-          <p className="text-3xl font-bold text-blue-600">{job.totalAmount} USDC</p>
+          <p className="text-3xl font-bold text-blue-600">{job.totalAmount} USD</p>
         </div>
         <div className="card text-center">
           <p className="text-gray-600 text-sm mb-2">Number of Milestones</p>
@@ -153,10 +249,32 @@ const JobDetail = () => {
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Milestones</h2>
         <div className="space-y-6">
           {job.milestones.map((milestone, index) => (
-            <MilestoneCard key={milestone.id} milestone={milestone} index={index} userRole={userRole} />
+            <MilestoneCard
+              key={milestone.id}
+              milestone={milestone}
+              index={index}
+              userRole={userRole}
+              onSubmitWork={handleSubmitWork}
+              onApprove={handleApprove}
+              onDispute={handleDispute}
+              txState={txState}
+            />
           ))}
         </div>
       </div>
+
+      {txState.txHash && (
+        <div className="mb-8 text-sm text-blue-700">
+          <a
+            href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${txState.txHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View latest transaction on Etherscan
+          </a>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex gap-4 mb-12">

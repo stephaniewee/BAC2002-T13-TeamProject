@@ -1,6 +1,7 @@
 // Smart Contract Addresses (Sepolia Testnet)
 export const CONTRACT_ADDRESSES = {
   ESCROW: import.meta.env.VITE_ESCROW_ADDRESS || '0x...',
+  DISPUTE_RESOLVER: import.meta.env.VITE_DISPUTE_ADDRESS || '0x...',
   FACTORY: import.meta.env.VITE_FACTORY_ADDRESS || '0x...',
   REPUTATION_SBT: import.meta.env.VITE_SBT_ADDRESS || '0x...',
   USDC: import.meta.env.VITE_USDC_ADDRESS || '0x...',
@@ -41,8 +42,8 @@ export const JOB_STATUS = {
 
 // Network Config
 export const NETWORK_CONFIG = {
-  CHAIN_ID: 11155111, // Sepolia
+  CHAIN_ID: Number(import.meta.env.VITE_CHAIN_ID || 11155111), // Sepolia
   CHAIN_NAME: 'Sepolia Testnet',
-  RPC_URL: 'https://sepolia.infura.io/v3/YOUR_INFURA_KEY',
+  RPC_URL: import.meta.env.VITE_RPC_URL || 'https://sepolia.infura.io/v3/YOUR_INFURA_KEY',
   EXPLORER_URL: 'https://sepolia.etherscan.io',
 };

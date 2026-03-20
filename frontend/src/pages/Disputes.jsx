@@ -1,8 +1,24 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
+import { ensureSepoliaNetwork, getDisputeReadContract, getDisputeWriteContract, getEscrowReadContract } from '../utils/contracts';
+import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 
-const DisputeCard = ({ dispute, userRole }) => {
-  const isArbitrator = userRole === 'arbitrator';
+const DISPUTED_STATE = 5;
+const RESOLVED_STATE = 6;
+
+const formatAddress = (value) => `${value.slice(0, 6)}...${value.slice(-4)}`;
+
+const toUSD = (amountUSD) => (Number(amountUSD) / 1e8).toFixed(2);
+
+const DisputeCard = ({
+  dispute,
+  userRole,
+  splitValue,
+  onSplitChange,
+  onResolve,
+  isResolving,
+}) => {
+  const isArbitrator = userRole === USER_ROLES.ARBITRATOR;
 
   return (
     <div className="card">
@@ -17,22 +33,23 @@ const DisputeCard = ({ dispute, userRole }) => {
       </div>
 
       <div className="p-4 bg-gray-50 rounded-lg mb-4">
-        <p className="text-sm font-medium text-gray-700 mb-2">Dispute Reason</p>
-        <p className="text-gray-600">{dispute.reason}</p>
+        <p className="text-sm font-medium text-gray-700 mb-2">Milestone Parties</p>
+        <p className="text-gray-600 text-sm">Client: {formatAddress(dispute.client)}</p>
+        <p className="text-gray-600 text-sm">Freelancer: {formatAddress(dispute.freelancer)}</p>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200">
         <div>
-          <p className="text-xs text-gray-500 uppercase">Amount at Stake</p>
-          <p className="font-bold text-gray-900">{dispute.amount} USDC</p>
+          <p className="text-xs text-gray-500 uppercase">Amount (USD)</p>
+          <p className="font-bold text-gray-900">{toUSD(dispute.amountUSD)} USD</p>
         </div>
         <div>
           <p className="text-xs text-gray-500 uppercase">Status</p>
           <p className="font-bold text-gray-900">{dispute.status}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-500 uppercase">Votes</p>
-          <p className="font-bold text-gray-900">{dispute.votes} / 3</p>
+          <p className="text-xs text-gray-500 uppercase">Milestone ID</p>
+          <p className="font-bold text-gray-900">#{dispute.id}</p>
         </div>
       </div>
 
@@ -49,14 +66,19 @@ const DisputeCard = ({ dispute, userRole }) => {
                   type="range"
                   min="0"
                   max="100"
-                  defaultValue="50"
+                  value={splitValue}
+                  onChange={(event) => onSplitChange(dispute.id, Number(event.target.value))}
                   className="flex-1"
                 />
-                <span className="font-bold text-gray-900 w-16 text-right">50/50</span>
+                <span className="font-bold text-gray-900 w-24 text-right">{splitValue}/{100 - splitValue}</span>
               </div>
             </div>
-            <button className="w-full btn-primary py-2 rounded-lg font-semibold">
-              Submit Vote
+            <button
+              onClick={() => onResolve(dispute.id, splitValue >= 50)}
+              disabled={isResolving}
+              className="w-full btn-primary py-2 rounded-lg font-semibold"
+            >
+              {isResolving ? 'Submitting Vote...' : 'Submit Vote'}
             </button>
           </div>
         </div>
@@ -74,31 +96,94 @@ const DisputeCard = ({ dispute, userRole }) => {
 };
 
 const Disputes = () => {
-  const { userRole, roleSource } = useWallet();
+  const { userRole, roleSource, provider, signer, account } = useWallet();
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [isResolving, setIsResolving] = useState(false);
+  const [splitById, setSplitById] = useState({});
+  const [lastResolveTxHash, setLastResolveTxHash] = useState('');
 
-  const disputes = [
-    {
-      id: 1,
-      jobTitle: 'UI Design for SaaS Dashboard',
-      milestoneNumber: 2,
-      amount: 600,
-      status: 'pending_arbitration',
-      votes: 1,
-      reason: 'The freelancer submitted work that does not match the agreed specifications. Colors and spacing are off.',
-    },
-    {
-      id: 2,
-      jobTitle: 'Smart Contract Audit',
-      milestoneNumber: 1,
-      amount: 500,
-      status: 'resolved',
-      votes: 3,
-      reason: 'Client rejected initial audit findings claiming they were misinterpreted.',
-    },
-  ];
+  const loadDisputes = useCallback(async () => {
+    if (!provider) {
+      return;
+    }
 
-  const pendingDisputes = disputes.filter(d => d.status === 'pending_arbitration');
-  const resolvedDisputes = disputes.filter(d => d.status === 'resolved');
+    try {
+      setLoading(true);
+      setError('');
+      await ensureSepoliaNetwork(provider);
+
+      const escrow = getEscrowReadContract(provider);
+      const total = Number(await escrow.milestoneCount());
+      const loaded = [];
+
+      for (let i = 0; i < total; i += 1) {
+        const milestone = await escrow.milestones(i);
+        const stateValue = Number(milestone.state);
+
+        if (stateValue !== DISPUTED_STATE && stateValue !== RESOLVED_STATE) {
+          continue;
+        }
+
+        loaded.push({
+          id: i,
+          jobTitle: `Milestone ${i}`,
+          milestoneNumber: i,
+          amountUSD: milestone.amountUSD,
+          status: stateValue === DISPUTED_STATE ? 'pending_arbitration' : 'resolved',
+          client: milestone.client,
+          freelancer: milestone.freelancer,
+        });
+      }
+
+      setDisputes(loaded);
+      setSplitById(Object.fromEntries(loaded.map((item) => [item.id, 50])));
+    } catch (loadError) {
+      setError(loadError?.shortMessage || loadError?.message || 'Unable to load disputes from chain.');
+    } finally {
+      setLoading(false);
+    }
+  }, [provider]);
+
+  useEffect(() => {
+    loadDisputes();
+  }, [loadDisputes]);
+
+  const handleSplitChange = (id, value) => {
+    setSplitById((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleResolve = async (milestoneId, releaseToFreelancer) => {
+    try {
+      if (!provider || !signer) {
+        throw new Error('Wallet signer not available. Reconnect MetaMask and try again.');
+      }
+
+      await ensureSepoliaNetwork(provider);
+
+      const dispute = getDisputeWriteContract(signer);
+      const disputeRead = getDisputeReadContract(provider);
+      const arbitrator = await disputeRead.isArbitrator(account);
+      if (!arbitrator) {
+        throw new Error('Connected wallet is not an arbitrator for this resolver.');
+      }
+
+      setIsResolving(true);
+      setError('');
+      const tx = await dispute.resolveDispute(milestoneId, releaseToFreelancer);
+      setLastResolveTxHash(tx.hash);
+      await tx.wait();
+      await loadDisputes();
+    } catch (resolveError) {
+      setError(resolveError?.shortMessage || resolveError?.message || 'Failed to resolve dispute.');
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  const pendingDisputes = disputes.filter((d) => d.status === 'pending_arbitration');
+  const resolvedDisputes = disputes.filter((d) => d.status === 'resolved');
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-12">
@@ -108,6 +193,32 @@ const Disputes = () => {
       {roleSource === 'override' && (
         <div className="mb-6 p-4 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-700">
           Role override is active. Actions shown here follow your selected testing role.
+        </div>
+      )}
+
+      {loading && (
+        <div className="mb-6 p-4 rounded-lg border border-gray-200 bg-white text-sm text-gray-700">
+          Loading disputes from EscrowContract...
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-6 p-4 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {lastResolveTxHash && (
+        <div className="mb-6 p-4 rounded-lg border border-green-200 bg-green-50 text-sm text-green-700">
+          Dispute transaction submitted.{' '}
+          <a
+            href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${lastResolveTxHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View on Etherscan
+          </a>
         </div>
       )}
 
@@ -124,7 +235,15 @@ const Disputes = () => {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {pendingDisputes.map(dispute => (
-                <DisputeCard key={dispute.id} dispute={dispute} userRole={userRole} />
+                <DisputeCard
+                  key={dispute.id}
+                  dispute={dispute}
+                  userRole={userRole}
+                  splitValue={splitById[dispute.id] ?? 50}
+                  onSplitChange={handleSplitChange}
+                  onResolve={handleResolve}
+                  isResolving={isResolving}
+                />
               ))}
             </div>
           )}
@@ -137,7 +256,15 @@ const Disputes = () => {
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {resolvedDisputes.map(dispute => (
-              <DisputeCard key={dispute.id} dispute={dispute} userRole={userRole} />
+              <DisputeCard
+                key={dispute.id}
+                dispute={dispute}
+                userRole={userRole}
+                splitValue={splitById[dispute.id] ?? 50}
+                onSplitChange={handleSplitChange}
+                onResolve={handleResolve}
+                isResolving={isResolving}
+              />
             ))}
           </div>
         </div>

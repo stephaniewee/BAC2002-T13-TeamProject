@@ -61,9 +61,6 @@ const Header = () => {
       <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
         <div className="flex items-center">
           <h1 className="text-2xl font-bold text-blue-600">FreelanceChain</h1>
-          <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded font-medium">
-            Beta
-          </span>
         </div>
 
         <nav className="flex items-center gap-6">

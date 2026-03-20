@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
-import { USER_ROLES } from '../constants/contracts';
+import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
+import { ensureSepoliaNetwork, getEscrowWriteContract } from '../utils/contracts';
 
 const CreateJob = () => {
-  const { isConnected, connectWallet, userRole } = useWallet();
+  const { isConnected, connectWallet, userRole, provider, signer } = useWallet();
   const [formData, setFormData] = useState({
+    freelancer: '',
     title: '',
     description: '',
     totalAmount: '',
@@ -13,6 +15,8 @@ const CreateJob = () => {
       { title: '', description: '', amount: '', deadline: '' },
     ],
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitState, setSubmitState] = useState({ status: '', error: '', milestoneId: null, createTxHash: '', fundTxHash: '' });
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -45,10 +49,59 @@ const CreateJob = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Submitting job:', formData);
-    // Call smart contract to create job
+
+    try {
+      if (!provider || !signer) {
+        throw new Error('Wallet signer not available. Reconnect MetaMask and try again.');
+      }
+
+      const firstMilestone = formData.milestones[0];
+      if (!firstMilestone?.amount || !firstMilestone?.deadline) {
+        throw new Error('At least one milestone amount and deadline are required.');
+      }
+
+      const amountUSD = BigInt(Math.round(Number(firstMilestone.amount) * 1e8));
+      if (amountUSD <= 0n) {
+        throw new Error('Milestone amount must be greater than zero.');
+      }
+
+      const deadlineTs = Math.floor(new Date(firstMilestone.deadline).getTime() / 1000);
+      if (!deadlineTs || deadlineTs <= Math.floor(Date.now() / 1000)) {
+        throw new Error('Milestone deadline must be in the future.');
+      }
+
+      setIsSubmitting(true);
+      setSubmitState({ status: 'Checking network...', error: '', milestoneId: null, createTxHash: '', fundTxHash: '' });
+
+      await ensureSepoliaNetwork(provider);
+      const escrow = getEscrowWriteContract(signer);
+
+      const nextMilestoneId = await escrow.milestoneCount();
+
+      setSubmitState({ status: 'Creating milestone transaction...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: '', fundTxHash: '' });
+      const createTx = await escrow.createMilestone(formData.freelancer, amountUSD, BigInt(deadlineTs));
+      setSubmitState({ status: 'Waiting for milestone creation confirmation...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: '' });
+      await createTx.wait();
+
+      const requiredETH = await escrow.getRequiredETH(nextMilestoneId);
+
+      setSubmitState({ status: 'Funding escrow...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: '' });
+      const fundTx = await escrow.fundMilestone(nextMilestoneId, { value: requiredETH });
+      setSubmitState({ status: 'Waiting for funding confirmation...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: fundTx.hash });
+      await fundTx.wait();
+
+      setSubmitState({ status: 'Milestone created and funded successfully.', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: fundTx.hash });
+    } catch (error) {
+      setSubmitState((prev) => ({
+        ...prev,
+        status: '',
+        error: error?.shortMessage || error?.message || 'Transaction failed.',
+      }));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!isConnected) {
@@ -81,6 +134,22 @@ const CreateJob = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Job Details</h2>
 
           <div className="space-y-4">
+            <div>
+              <label htmlFor="freelancer" className="block text-sm font-medium text-gray-700 mb-2">
+                Freelancer Wallet Address
+              </label>
+              <input
+                type="text"
+                id="freelancer"
+                name="freelancer"
+                value={formData.freelancer}
+                onChange={handleInputChange}
+                placeholder="0x..."
+                className="input-base"
+                required
+              />
+            </div>
+
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
                 Job Title
@@ -257,13 +326,50 @@ const CreateJob = () => {
           </div>
         </div>
 
+        {(submitState.status || submitState.error) && (
+          <div className={`card ${submitState.error ? 'border border-red-200 bg-red-50' : 'border border-green-200 bg-green-50'}`}>
+            {submitState.status && <p className="text-sm font-medium text-gray-900 mb-2">{submitState.status}</p>}
+            {submitState.milestoneId !== null && (
+              <p className="text-xs text-gray-600 mb-1">Milestone ID: {submitState.milestoneId}</p>
+            )}
+            {submitState.createTxHash && (
+              <p className="text-xs text-gray-600 break-all mb-1">
+                Create tx: {submitState.createTxHash}{' '}
+                <a
+                  href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${submitState.createTxHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  View
+                </a>
+              </p>
+            )}
+            {submitState.fundTxHash && (
+              <p className="text-xs text-gray-600 break-all">
+                Fund tx: {submitState.fundTxHash}{' '}
+                <a
+                  href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${submitState.fundTxHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  View
+                </a>
+              </p>
+            )}
+            {submitState.error && <p className="text-sm text-red-700">{submitState.error}</p>}
+          </div>
+        )}
+
         {/* Submit */}
         <div className="flex gap-4">
           <button
             type="submit"
+            disabled={isSubmitting}
             className="flex-1 btn-primary py-3 rounded-lg font-semibold"
           >
-            Post Job & Fund Escrow
+            {isSubmitting ? 'Submitting...' : 'Post Job & Fund Escrow'}
           </button>
           <button
             type="button"
