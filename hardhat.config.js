@@ -4,16 +4,20 @@ require("dotenv").config();
 
 module.exports = {
   solidity: {
-    version: "0.8.20",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200
+    compilers: [
+      {
+        version: "0.8.25",
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          evmVersion: "cancun"
+        }
       }
-    }
+    ]
   },
   networks: {
-    hardhat: {},
+    hardhat: {
+      hardfork: "cancun"
+    },
     sepolia: {
       url: process.env.ALCHEMY_SEPOLIA_URL || "",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
