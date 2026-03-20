@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useWallet } from '../hooks/useWallet';
 
 const DisputeCard = ({ dispute, userRole }) => {
   const isArbitrator = userRole === 'arbitrator';
@@ -73,7 +74,7 @@ const DisputeCard = ({ dispute, userRole }) => {
 };
 
 const Disputes = () => {
-  const [userRole] = useState('freelancer'); // This would come from wallet/context
+  const { userRole, roleSource } = useWallet();
 
   const disputes = [
     {
@@ -103,6 +104,12 @@ const Disputes = () => {
     <div className="max-w-5xl mx-auto px-6 py-12">
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Disputes</h1>
       <p className="text-gray-600 mb-12">Manage your job disputes and arbitration votes</p>
+
+      {roleSource === 'override' && (
+        <div className="mb-6 p-4 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-700">
+          Role override is active. Actions shown here follow your selected testing role.
+        </div>
+      )}
 
       <div className="space-y-12">
         {/* Pending Disputes */}

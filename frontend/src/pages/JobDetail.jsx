@@ -2,10 +2,32 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 import MilestoneCard from '../components/MilestoneCard';
 import ReputationBadge from '../components/ReputationBadge';
+import { useWallet } from '../hooks/useWallet';
+import { USER_ROLES } from '../constants/contracts';
+
+const ROLE_ACTIONS = {
+  [USER_ROLES.CLIENT]: {
+    primary: 'Manage Escrow Milestones',
+    secondary: 'Edit Job Terms',
+    helper: 'Client mode: review submissions and approve milestone payouts.',
+  },
+  [USER_ROLES.FREELANCER]: {
+    primary: 'Apply to This Job',
+    secondary: 'Save for Later',
+    helper: 'Freelancer mode: submit milestones and track release timelines.',
+  },
+  [USER_ROLES.ARBITRATOR]: {
+    primary: 'Open Dispute Context',
+    secondary: 'Watch Job',
+    helper: 'Arbitrator mode: monitor delivery context for possible dispute review.',
+  },
+};
 
 const JobDetail = () => {
   // In a real app, this would fetch data from an API or smart contract
   const { id } = useParams();
+  const { userRole, roleSource } = useWallet();
+  const currentActions = ROLE_ACTIONS[userRole] || ROLE_ACTIONS[USER_ROLES.FREELANCER];
 
   // Mock job data
   const job = {
@@ -96,8 +118,17 @@ const JobDetail = () => {
                 </div>
               </div>
             </div>
-            <button className="btn-primary">Contact Client</button>
+            <button className="btn-primary">
+              {userRole === USER_ROLES.CLIENT ? 'Message Freelancer' : 'Contact Client'}
+            </button>
           </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm font-medium text-blue-800">{currentActions.helper}</p>
+          {roleSource === 'override' && (
+            <p className="text-xs text-blue-600 mt-1">Role override active for testing.</p>
+          )}
         </div>
       </div>
 
@@ -122,7 +153,7 @@ const JobDetail = () => {
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Milestones</h2>
         <div className="space-y-6">
           {job.milestones.map((milestone, index) => (
-            <MilestoneCard key={milestone.id} milestone={milestone} index={index} />
+            <MilestoneCard key={milestone.id} milestone={milestone} index={index} userRole={userRole} />
           ))}
         </div>
       </div>
@@ -130,10 +161,10 @@ const JobDetail = () => {
       {/* Action Buttons */}
       <div className="flex gap-4 mb-12">
         <button className="flex-1 btn-primary py-3 rounded-lg font-semibold">
-          Apply to This Job
+          {currentActions.primary}
         </button>
         <button className="flex-1 btn-secondary py-3 rounded-lg font-semibold">
-          Save for Later
+          {currentActions.secondary}
         </button>
       </div>
     </div>
