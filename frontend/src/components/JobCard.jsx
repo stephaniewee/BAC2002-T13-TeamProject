@@ -1,7 +1,17 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import ReputationBadge from './ReputationBadge';
+import { USER_ROLES } from '../constants/contracts';
 
-const JobCard = ({ job }) => {
+const ROLE_ACTION_COPY = {
+  [USER_ROLES.CLIENT]: { primary: 'View Applicants', secondary: 'Edit Job' },
+  [USER_ROLES.FREELANCER]: { primary: 'View Details', secondary: 'Apply' },
+  [USER_ROLES.ARBITRATOR]: { primary: 'Review Brief', secondary: 'Watch Job' },
+};
+
+const JobCard = ({ job, userRole }) => {
+  const actionCopy = ROLE_ACTION_COPY[userRole] || ROLE_ACTION_COPY[USER_ROLES.FREELANCER];
+
   return (
     <div className="card hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-3">
@@ -22,11 +32,13 @@ const JobCard = ({ job }) => {
       </div>
 
       <div className="flex gap-2">
-        <button className="flex-1 btn-primary text-sm py-2">
-          View Details
-        </button>
+        <Link to={`/jobs/${job.id}`} className="flex-1">
+          <button className="w-full btn-primary text-sm py-2">
+            {actionCopy.primary}
+          </button>
+        </Link>
         <button className="flex-1 btn-secondary text-sm py-2">
-          Apply
+          {actionCopy.secondary}
         </button>
       </div>
     </div>

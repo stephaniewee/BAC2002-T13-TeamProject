@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import JobCard from '../components/JobCard';
+import { useWallet } from '../hooks/useWallet';
+import { USER_ROLES } from '../constants/contracts';
+
+const ROLE_BROWSE_COPY = {
+  [USER_ROLES.CLIENT]: 'Track market rates, compare portfolios, and benchmark your open jobs.',
+  [USER_ROLES.FREELANCER]: 'Find your next freelance opportunity and start earning USDC.',
+  [USER_ROLES.ARBITRATOR]: 'Monitor active jobs so you can make faster, context-aware arbitration decisions.',
+};
 
 const BrowseJobs = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTier, setFilterTier] = useState('all');
+  const { userRole, roleSource } = useWallet();
 
   // Mock data - replace with actual API calls
   const jobs = [
@@ -61,7 +70,10 @@ const BrowseJobs = () => {
     <div className="max-w-7xl mx-auto px-6 py-12">
       <div className="mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">Browse Available Gigs</h1>
-        <p className="text-gray-600">Find your next freelance opportunity and start earning USDC</p>
+        <p className="text-gray-600">{ROLE_BROWSE_COPY[userRole] || ROLE_BROWSE_COPY[USER_ROLES.FREELANCER]}</p>
+        {roleSource === 'override' && (
+          <p className="text-xs text-blue-600 mt-2">Role override is active for testing flows.</p>
+        )}
       </div>
 
       <div className="card mb-8">
@@ -101,7 +113,7 @@ const BrowseJobs = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredJobs.map((job) => (
-            <JobCard key={job.id} job={job} />
+            <JobCard key={job.id} job={job} userRole={userRole} />
           ))}
         </div>
       )}

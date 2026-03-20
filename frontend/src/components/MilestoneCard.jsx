@@ -1,7 +1,7 @@
 import React from 'react';
-import { MILESTONE_STATUS } from '../constants/contracts';
+import { MILESTONE_STATUS, USER_ROLES } from '../constants/contracts';
 
-const MilestoneCard = ({ milestone, index }) => {
+const MilestoneCard = ({ milestone, index, userRole }) => {
   const getStatusColor = (status) => {
     switch (status) {
       case MILESTONE_STATUS.PENDING:
@@ -54,16 +54,22 @@ const MilestoneCard = ({ milestone, index }) => {
         </div>
       </div>
 
-      {milestone.status === MILESTONE_STATUS.PENDING && (
+      {milestone.status === MILESTONE_STATUS.PENDING && userRole === USER_ROLES.FREELANCER && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
           <button className="flex-1 btn-primary text-sm py-2">Submit Work</button>
         </div>
       )}
 
-      {milestone.status === MILESTONE_STATUS.SUBMITTED && (
+      {milestone.status === MILESTONE_STATUS.SUBMITTED && userRole === USER_ROLES.CLIENT && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
           <button className="flex-1 btn-success text-sm py-2">Approve</button>
           <button className="flex-1 btn-danger text-sm py-2">Dispute</button>
+        </div>
+      )}
+
+      {milestone.status === MILESTONE_STATUS.DISPUTED && userRole === USER_ROLES.ARBITRATOR && (
+        <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
+          <button className="flex-1 btn-primary text-sm py-2">Open Arbitration</button>
         </div>
       )}
     </div>

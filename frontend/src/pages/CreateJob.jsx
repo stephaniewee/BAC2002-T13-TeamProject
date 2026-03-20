@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
+import { USER_ROLES } from '../constants/contracts';
 
 const CreateJob = () => {
-  const { isConnected } = useWallet();
+  const { isConnected, connectWallet, userRole } = useWallet();
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -55,7 +56,16 @@ const CreateJob = () => {
       <div className="max-w-2xl mx-auto px-6 py-12 text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-4">Post a New Job</h1>
         <p className="text-gray-600 mb-6">Connect your wallet to post a job and start finding freelancers.</p>
-        <button className="btn-primary px-8 py-3">Connect Wallet</button>
+        <button onClick={connectWallet} className="btn-primary px-8 py-3">Connect Wallet</button>
+      </div>
+    );
+  }
+
+  if (userRole !== USER_ROLES.CLIENT) {
+    return (
+      <div className="max-w-2xl mx-auto px-6 py-12 text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-4">Client Role Required</h1>
+        <p className="text-gray-600 mb-6">Posting a job is available for clients. Switch your role in the header for testing.</p>
       </div>
     );
   }
