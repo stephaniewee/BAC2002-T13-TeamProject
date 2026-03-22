@@ -13,7 +13,7 @@ contract DisputeResolver is AccessControl {
 
     IEscrowContract public immutable escrow;
 
-    event DisputeResolved(uint256 indexed milestoneId, address indexed arbitrator, bool releasedToFreelancer);
+    event DisputeResolved(uint256 indexed milestoneId, address indexed arbitrator, bool releasedToFreelancer, uint256 timestamp);
     event ArbitratorAdded(address indexed arbitrator);
     event ArbitratorRemoved(address indexed arbitrator);
 
@@ -34,7 +34,7 @@ contract DisputeResolver is AccessControl {
         bool releaseToFreelancer
     ) external onlyRole(ARBITRATOR_ROLE) {
         escrow.resolveFromDispute(milestoneId, releaseToFreelancer);
-        emit DisputeResolved(milestoneId, msg.sender, releaseToFreelancer);
+        emit DisputeResolved(milestoneId, msg.sender, releaseToFreelancer, block.timestamp);
     }
 
     // ── Manage arbitrators ───────────────────────────────────────────
