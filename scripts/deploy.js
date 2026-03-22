@@ -58,7 +58,7 @@ async function main() {
   console.log("   ESCROW_ROLE granted");
 
   // ── 6. Print summary ─────────────────────────────────────────────────
-  console.log("\n=== DEPLOYMENT SUMMARY ===");
+  console.log("\n7. === DEPLOYMENT SUMMARY ===");
   console.log("Network:             Sepolia");
   console.log("ReputationSBT:      ", await reputationSBT.getAddress());
   console.log("ChainlinkPriceFeed: ", await chainlinkFeed.getAddress());
