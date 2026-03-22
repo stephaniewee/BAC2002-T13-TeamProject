@@ -141,11 +141,13 @@ describe("DisputeResolver", function () {
 
     it("should emit DisputeResolved with correct args", async function () {
       await setupDisputedMilestone();
-      await expect(
-        disputeResolver.connect(arbitrator).resolveDispute(0, true)
-      )
+      const tx = await disputeResolver.connect(arbitrator).resolveDispute(0, true);
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      await expect(tx)
         .to.emit(disputeResolver, "DisputeResolved")
-        .withArgs(0, arbitrator.address, true);
+        .withArgs(0, arbitrator.address, true, block.timestamp);
     });
 
     it("should emit FundsReleased from escrow to freelancer", async function () {
@@ -183,11 +185,13 @@ describe("DisputeResolver", function () {
 
     it("should emit DisputeResolved with releaseToFreelancer = false", async function () {
       await setupDisputedMilestone();
-      await expect(
-        disputeResolver.connect(arbitrator).resolveDispute(0, false)
-      )
+      const tx = await disputeResolver.connect(arbitrator).resolveDispute(0, false);
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      await expect(tx)
         .to.emit(disputeResolver, "DisputeResolved")
-        .withArgs(0, arbitrator.address, false);
+        .withArgs(0, arbitrator.address, false, block.timestamp);
     });
 
     it("should emit FundsReleased from escrow to client", async function () {
