@@ -39,6 +39,10 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
     // Slippage buffers per SBT tier (basis points: 200 = 2%, 50 = 0.5%)
     uint256[4] public slippageBufferBPS = [200, 150, 100, 50];
 
+    // Max escrow value per SBT tier (in USD, 8 decimals — Chainlink format)
+    // Tier 0: $500, Tier 1: $2000, Tier 2: $10000, Tier 3: unlimited (type(uint256).max)
+    uint256[4] public maxEscrowUSD = [500e8, 2000e8, 10000e8, type(uint256).max];
+
     event MilestoneCreated(uint256 indexed id, address client, address freelancer, uint256 amountUSD);
     event MilestoneFunded(uint256 indexed id, uint256 ethLocked, uint256 ethRequired);
     event WorkSubmitted(uint256 indexed id, bytes32 deliverableHash);
@@ -62,6 +66,10 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
         require(amountUSD > 0, "Amount must be > 0");
         require(deadline > block.timestamp, "Deadline must be future");
 
+        // NEW: enforce escrow cap based on freelancer's SBT tier
+        uint8 tier = reputationSBT.getTier(freelancer);
+        require(amountUSD <= maxEscrowUSD[tier], "Escrow value exceeds tier cap");
+
         uint256 id = milestoneCount++;
         milestones[id] = Milestone({
             client: msg.sender,
@@ -72,7 +80,6 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
             deadline: deadline,
             deliverableHash: bytes32(0)
         });
-
         emit MilestoneCreated(id, msg.sender, freelancer, amountUSD);
         return id;
     }
@@ -165,6 +172,9 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
         );
         require(m.state == MilestoneState.PENDING_REVIEW, "Cannot dispute now");
 
+        // NEW: freeze SBT tier reads during active dispute
+        reputationSBT.setFrozen(m.freelancer, true);
+
         m.state = MilestoneState.DISPUTED;
         emit DisputeRaised(id);
     }
@@ -176,19 +186,19 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
     ) external nonReentrant onlyRole(DISPUTE_ROLE) {
         Milestone storage m = milestones[id];
         require(m.state == MilestoneState.DISPUTED, "Not disputed");
-
         m.state = MilestoneState.RESOLVED;
         uint256 amount = m.lockedETH;
         m.lockedETH = 0;
-
         address recipient = releaseToFreelancer ? m.freelancer : m.client;
+
+        // NEW: unfreeze before updating reputation
+        reputationSBT.setFrozen(m.freelancer, false);
 
         reputationSBT.updateReputation(m.freelancer, releaseToFreelancer);
         reputationSBT.updateReputation(m.client, !releaseToFreelancer);
 
         (bool sent, ) = payable(recipient).call{value: amount}("");
         require(sent, "Transfer failed");
-
         emit FundsReleased(id, recipient, amount);
     }
 
@@ -223,6 +233,23 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
         require(sent, "Refund failed");
 
         emit FundsReleased(id, m.client, amount);
+    }
+
+    // ── 9. Emergency admin withdrawal ───────────────────────────────────
+    // Safety valve: allows admin to recover ETH if a milestone is permanently stuck
+    // (e.g. both parties unreachable, contract bug). Requires DEFAULT_ADMIN_ROLE.
+    // Cannot drain an active milestone — only callable on RESOLVED/COMPLETED states.
+    function emergencyWithdraw(uint256 id) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        Milestone storage m = milestones[id];
+        require(
+            m.state == MilestoneState.RESOLVED ||
+            m.state == MilestoneState.COMPLETED,
+            "Milestone still active"
+        );
+        require(address(this).balance > 0, "Nothing to withdraw");
+        uint256 amount = address(this).balance;
+        (bool sent, ) = payable(msg.sender).call{value: amount}("");
+        require(sent, "Withdrawal failed");
     }
 
     receive() external payable {}
