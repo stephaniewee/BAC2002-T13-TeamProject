@@ -37,12 +37,16 @@ contract ReputationSBT is ERC721, AccessControl {
     mapping(address => Reputation) public reputations;
     mapping(address => uint256)    public tokenOf;      // wallet → tokenId (0 = none)
     mapping(address => bool)       public hasSBT;       // quick existence check
+    // ── NEW: dispute freeze mapping ───────────────────────────────────
+    mapping(address => bool) private _frozen;
 
     uint256 private _nextTokenId = 1;
 
     // ── Events ────────────────────────────────────────────────────────
     event SBTMinted(address indexed wallet, uint256 tokenId);
     event ReputationUpdated(address indexed wallet, bool success, uint8 newTier);
+    // ── NEW: freeze event for auditability ───────────────────────────
+    event ReputationFrozen(address indexed wallet, bool frozen);
 
     // ── Constructor ───────────────────────────────────────────────────
     constructor() ERC721("FreelanceChain Reputation", "FCREP") {
@@ -52,6 +56,12 @@ contract ReputationSBT is ERC721, AccessControl {
     // ── Grant escrow contract permission to update reputations ────────
     function grantEscrowRole(address escrowContract) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _grantRole(ESCROW_ROLE, escrowContract);
+    }
+
+    // ── NEW: modifier — blocks getTier reads during active dispute ────
+    modifier notFrozen(address wallet) {
+        require(!_frozen[wallet], "Reputation frozen: active dispute");
+        _;
     }
 
     // ── Called by EscrowContract after milestone completion/resolution ─
@@ -81,14 +91,25 @@ contract ReputationSBT is ERC721, AccessControl {
         emit ReputationUpdated(wallet, success, getTier(wallet));
     }
 
-    // ── Returns tier 0-3 based on completed jobs ──────────────────────
-    function getTier(address wallet) public view returns (uint8) {
+    // ── (MODIFIED: notFrozen modifier added) Returns tier 0-3 based on completed jobs ──────────────────────
+    function getTier(address wallet) public view notFrozen(wallet) returns (uint8) {
         if (!hasSBT[wallet]) return 0;
         uint256 jobs = reputations[wallet].jobsCompleted;
         if (jobs >= 10) return 3;   // Elite
         if (jobs >= 5)  return 2;   // Trusted
         if (jobs >= 1)  return 1;   // Established
         return 0;                   // New
+    }
+
+    // ── NEW: freeze / unfreeze — only callable by EscrowContract ─────
+    function setFrozen(address wallet, bool frozen) external onlyRole(ESCROW_ROLE) {
+        _frozen[wallet] = frozen;
+        emit ReputationFrozen(wallet, frozen);
+    }
+
+    // ── NEW: public view so frontend can show freeze status ──────────
+    function isFrozen(address wallet) external view returns (bool) {
+        return _frozen[wallet];
     }
 
     // ── Returns full reputation record ────────────────────────────────
@@ -100,14 +121,27 @@ contract ReputationSBT is ERC721, AccessControl {
         uint256 lastUpdated,
         uint8   tier
     ) {
-        Reputation storage rep = reputations[wallet];
+        Reputation storage rep = reputations[wallet]; // ← Bug 1 fix: declare rep first
+
+        // Bypasses notFrozen — frontend can always display reputation data
+        uint8 computedTier;
+        if (!hasSBT[wallet]) {
+            computedTier = 0;
+        } else {
+            uint256 jobs = rep.jobsCompleted;
+            if (jobs >= 10)     computedTier = 3;
+            else if (jobs >= 5) computedTier = 2;
+            else if (jobs >= 1) computedTier = 1;
+            else                computedTier = 0;
+        }
+
         return (
             rep.jobsCompleted,
             rep.jobsFailed,
             rep.disputesRaised,
             rep.milestonesSuccess,
             rep.lastUpdated,
-            getTier(wallet)
+            computedTier  // ← Bug 2 fix: use computedTier, not getTier(wallet)
         );
     }
 
