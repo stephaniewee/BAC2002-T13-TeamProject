@@ -69,12 +69,37 @@ const toActivityBorder = (stateValue) => {
   return 'border-l-blue-500';
 };
 
+const HeroFeatureIcon = ({ type }) => {
+  if (type === 'escrow') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-white" aria-hidden="true">
+        <path d="M3 7a2 2 0 012-2h14a2 2 0 012 2v3H3V7zm0 5h18v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5zm4 2a1 1 0 100 2h2a1 1 0 100-2H7z" />
+      </svg>
+    );
+  }
+
+  if (type === 'reputation') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-white" aria-hidden="true">
+        <path d="M12 2l2.47 5.01L20 7.82l-4 3.9.94 5.48L12 14.9l-4.94 2.3L8 11.72l-4-3.9 5.53-.8L12 2z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-white" aria-hidden="true">
+      <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
+    </svg>
+  );
+};
+
 const Home = () => {
   const { isConnected, connectWallet, userRole, roleSource, provider, account } = useWallet();
   const [stats, setStats] = useState([]);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
   const roleLabel = userRole.charAt(0).toUpperCase() + userRole.slice(1);
   const dashboard = DASHBOARD_CONTENT[userRole] || DASHBOARD_CONTENT[USER_ROLES.FREELANCER];
@@ -123,6 +148,8 @@ const Home = () => {
             })
         );
 
+        setLastSyncedAt(new Date());
+
         return;
       }
 
@@ -160,6 +187,8 @@ const Home = () => {
               };
             })
         );
+
+        setLastSyncedAt(new Date());
 
         return;
       }
@@ -200,6 +229,8 @@ const Home = () => {
             };
           })
       );
+
+      setLastSyncedAt(new Date());
     } catch (loadError) {
       setError(loadError?.shortMessage || loadError?.message || 'Failed to load dashboard data from chain.');
       setStats([]);
@@ -313,17 +344,17 @@ const Home = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
             <div className="bg-white bg-opacity-10 backdrop-blur rounded-lg p-6">
-              <div className="text-3xl mb-3">💰</div>
+              <div className="mb-3 flex justify-center"><HeroFeatureIcon type="escrow" /></div>
               <h3 className="font-semibold mb-2">Secure Escrow</h3>
               <p className="text-sm opacity-80">Your funds are protected by smart contracts</p>
             </div>
             <div className="bg-white bg-opacity-10 backdrop-blur rounded-lg p-6">
-              <div className="text-3xl mb-3">🏆</div>
+              <div className="mb-3 flex justify-center"><HeroFeatureIcon type="reputation" /></div>
               <h3 className="font-semibold mb-2">Reputation System</h3>
               <p className="text-sm opacity-80">Soulbound tokens prove your track record</p>
             </div>
             <div className="bg-white bg-opacity-10 backdrop-blur rounded-lg p-6">
-              <div className="text-3xl mb-3">⚡</div>
+              <div className="mb-3 flex justify-center"><HeroFeatureIcon type="settlement" /></div>
               <h3 className="font-semibold mb-2">Instant Settlement</h3>
               <p className="text-sm opacity-80">Get paid immediately upon completion</p>
             </div>
@@ -351,11 +382,16 @@ const Home = () => {
 
       <div className="mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        <p className="text-gray-600">{dashboard.subtitle}</p>
+        <p className="text-gray-700">{dashboard.subtitle}</p>
         <div className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">
           <span className="font-semibold">Acting as {roleLabel}</span>
           {roleSource === 'override' && <span>(Override mode)</span>}
         </div>
+        {lastSyncedAt && (
+          <p className="text-xs text-gray-500 mt-2">
+            Last synced: {lastSyncedAt.toLocaleTimeString()}
+          </p>
+        )}
       </div>
 
       {loading && (
@@ -387,7 +423,7 @@ const Home = () => {
                   <div className="flex justify-between">
                     <div>
                       <h3 className="font-semibold text-gray-900">{item.title}</h3>
-                      <p className="text-sm text-gray-600">{item.detail}</p>
+                      <p className="text-sm text-gray-700">{item.detail}</p>
                     </div>
                     <span className="text-sm text-gray-500">{item.meta}</span>
                   </div>

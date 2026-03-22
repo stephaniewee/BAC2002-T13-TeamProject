@@ -15,6 +15,21 @@ const ROLE_BROWSE_COPY = {
   [USER_ROLES.ARBITRATOR]: 'Monitor active jobs so you can make faster, context-aware arbitration decisions.',
 };
 
+const EMPTY_BROWSE_STATE = {
+  [USER_ROLES.CLIENT]: {
+    title: 'No jobs in your client view yet',
+    hint: 'Create and fund a milestone first, then it will appear here.',
+  },
+  [USER_ROLES.FREELANCER]: {
+    title: 'No jobs assigned to this freelancer wallet',
+    hint: 'Use a milestone where this wallet is the freelancer, then refresh.',
+  },
+  [USER_ROLES.ARBITRATOR]: {
+    title: 'No jobs found with current filters',
+    hint: 'Clear filters or wait for new milestones to be created on-chain.',
+  },
+};
+
 const ESCROW_STATE_TO_STATUS = {
   0: 'open',
   1: 'in_progress',
@@ -26,6 +41,15 @@ const ESCROW_STATE_TO_STATUS = {
 };
 
 const EMPTY_HASH = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+const JobCardSkeleton = () => (
+  <div className="card animate-pulse">
+    <div className="h-4 bg-gray-200 rounded w-2/3 mb-4" />
+    <div className="h-3 bg-gray-200 rounded w-full mb-2" />
+    <div className="h-3 bg-gray-200 rounded w-5/6 mb-4" />
+    <div className="h-8 bg-gray-200 rounded w-1/3" />
+  </div>
+);
 
 const BrowseJobs = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -129,6 +153,8 @@ const BrowseJobs = () => {
     return matchesSearch && matchesTier;
   }), [jobs, searchTerm, filterTier]);
 
+  const emptyState = EMPTY_BROWSE_STATE[userRole] || EMPTY_BROWSE_STATE[USER_ROLES.FREELANCER];
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
       <div className="mb-12">
@@ -169,17 +195,30 @@ const BrowseJobs = () => {
       </div>
 
       {loading && (
-        <div className="card mb-8 text-sm text-gray-700">Loading jobs from EscrowContract...</div>
+        <div className="mb-8">
+          <div className="card mb-4 text-sm text-gray-700">Loading jobs from EscrowContract...</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <JobCardSkeleton />
+            <JobCardSkeleton />
+            <JobCardSkeleton />
+          </div>
+        </div>
       )}
 
       {loadError && (
         <div className="card mb-8 border border-red-200 bg-red-50 text-sm text-red-700">{loadError}</div>
       )}
 
+      {!loading && (
+        <p className="text-sm text-gray-600 mb-5">
+          Showing {filteredJobs.length} of {jobs.length} job{jobs.length === 1 ? '' : 's'}
+        </p>
+      )}
+
       {filteredJobs.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-600 text-lg">No jobs found matching your criteria.</p>
-          <p className="text-gray-500 mt-2">Try adjusting your filters or search terms.</p>
+          <p className="text-gray-700 text-lg font-semibold">{emptyState.title}</p>
+          <p className="text-gray-500 mt-2">{emptyState.hint}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

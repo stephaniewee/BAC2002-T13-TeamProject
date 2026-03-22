@@ -47,6 +47,32 @@ const getArbitratorStatus = (stateValue) => {
 
 const formatTabLabel = (value) => value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
+const EMPTY_STATE_BY_ROLE = {
+    [USER_ROLES.CLIENT]: {
+        active: 'No active milestones yet. Create and fund your first job to get started.',
+        review: 'Nothing waiting for review right now. Submitted work will appear here.',
+        completed: 'No completed milestones yet. Approve or resolve a milestone to populate this tab.',
+    },
+    [USER_ROLES.FREELANCER]: {
+        active: 'No active work yet. Ask a client to create a milestone for your wallet.',
+        applied: 'No pending funding milestones. Newly created milestones will appear here.',
+        completed: 'No completed payouts yet. Settled milestones will appear here.',
+    },
+    [USER_ROLES.ARBITRATOR]: {
+        ready_to_vote: 'No disputes waiting for arbitrator action.',
+        resolved: 'No resolved disputes yet.',
+    },
+};
+
+const JobRowSkeleton = () => (
+    <div className="card animate-pulse">
+        <div className="h-3 bg-gray-200 rounded w-1/4 mb-3" />
+        <div className="h-5 bg-gray-200 rounded w-3/4 mb-3" />
+        <div className="h-3 bg-gray-200 rounded w-full mb-4" />
+        <div className="h-8 bg-gray-200 rounded w-1/3" />
+    </div>
+);
+
 const MyJobs = () => {
     const { userRole, roleSource, provider, account } = useWallet();
     const roleData = ROLE_VIEW_BY_ROLE[userRole] || ROLE_VIEW_BY_ROLE[USER_ROLES.FREELANCER];
@@ -180,6 +206,8 @@ const MyJobs = () => {
         [jobs, activeTab]
     );
 
+    const emptyCopy = EMPTY_STATE_BY_ROLE[userRole]?.[activeTab] || 'Nothing in this tab yet. Switch to another tab to view jobs.';
+
     return (
         <div className="max-w-6xl mx-auto px-6 py-12">
             <div className="mb-10">
@@ -206,7 +234,13 @@ const MyJobs = () => {
             </div>
 
             {loading && (
-                <div className="card mb-6 text-sm text-gray-700">Loading your milestones from EscrowContract...</div>
+                <div className="mb-6">
+                    <div className="card mb-4 text-sm text-gray-700">Loading your milestones from EscrowContract...</div>
+                    <div className="space-y-4">
+                        <JobRowSkeleton />
+                        <JobRowSkeleton />
+                    </div>
+                </div>
             )}
 
             {loadError && (
@@ -216,7 +250,7 @@ const MyJobs = () => {
             {filteredJobs.length === 0 ? (
                 <div className="card text-center py-12">
                     <p className="text-gray-700 font-semibold mb-1">Nothing in this tab yet</p>
-                    <p className="text-gray-500 text-sm">Switch to another tab to view jobs.</p>
+                    <p className="text-gray-500 text-sm">{emptyCopy}</p>
                 </div>
             ) : (
                 <div className="space-y-4">

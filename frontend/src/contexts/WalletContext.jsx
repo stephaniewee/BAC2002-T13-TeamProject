@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback } from 'react';
+import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { BrowserProvider } from 'ethers';
 import { USER_ROLES } from '../constants/contracts';
 
@@ -24,6 +24,14 @@ export const WalletProvider = ({ children }) => {
 
   const userRole = roleOverride || onChainRole || USER_ROLES.FREELANCER;
   const roleSource = roleOverride ? 'override' : (onChainRole ? 'onchain' : 'default');
+
+  const resetWalletState = useCallback(() => {
+    setAccount(null);
+    setProvider(null);
+    setSigner(null);
+    setOnChainRole(null);
+    localStorage.removeItem('walletConnected');
+  }, []);
 
   const resolveOnChainRole = useCallback(async () => {
     // Placeholder until contract-backed profile read is wired in.
@@ -79,12 +87,69 @@ export const WalletProvider = ({ children }) => {
   }, []);
 
   const disconnectWallet = useCallback(() => {
-    setAccount(null);
-    setProvider(null);
-    setSigner(null);
-    setOnChainRole(null);
-    localStorage.removeItem('walletConnected');
-  }, []);
+    resetWalletState();
+  }, [resetWalletState]);
+
+  useEffect(() => {
+    if (!window.ethereum) {
+      return;
+    }
+
+    let mounted = true;
+
+    const syncWalletFromProvider = async (nextAccounts) => {
+      try {
+        const accounts = nextAccounts ?? await window.ethereum.request({ method: 'eth_accounts' });
+
+        if (!accounts || accounts.length === 0) {
+          if (mounted) {
+            resetWalletState();
+          }
+          return;
+        }
+
+        const nextProvider = new BrowserProvider(window.ethereum);
+        const nextSigner = await nextProvider.getSigner();
+        const resolvedRole = await resolveOnChainRole();
+
+        if (!mounted) {
+          return;
+        }
+
+        setAccount(accounts[0]);
+        setProvider(nextProvider);
+        setSigner(nextSigner);
+        setOnChainRole(resolvedRole);
+        localStorage.setItem('walletConnected', 'true');
+      } catch (err) {
+        if (mounted) {
+          setError(err?.message || 'Failed to sync wallet state.');
+        }
+      }
+    };
+
+    const shouldReconnect = localStorage.getItem('walletConnected') === 'true';
+    if (shouldReconnect) {
+      syncWalletFromProvider();
+    }
+
+    const handleAccountsChanged = (accounts) => {
+      syncWalletFromProvider(accounts);
+    };
+
+    const handleChainChanged = () => {
+      syncWalletFromProvider();
+    };
+
+    window.ethereum.on('accountsChanged', handleAccountsChanged);
+    window.ethereum.on('chainChanged', handleChainChanged);
+
+    return () => {
+      mounted = false;
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
+    };
+  }, [resetWalletState, resolveOnChainRole]);
 
   const value = {
     account,

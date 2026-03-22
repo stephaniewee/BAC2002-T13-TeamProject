@@ -17,6 +17,23 @@ const formatDateTime = (unixSeconds) => {
   return new Date(Number(unixSeconds) * 1000).toLocaleString();
 };
 
+const RESOLVE_FLOW_STEPS = [
+  'Check Network',
+  'Verify Arbitrator Role',
+  'Submit Resolution',
+  'Confirm Transaction',
+];
+
+const formatDisputeStatus = (status) => {
+  if (status === 'pending_arbitration') {
+    return 'Pending Arbitration';
+  }
+  if (status === 'resolved') {
+    return 'Resolved';
+  }
+  return status;
+};
+
 const DisputeCard = ({
   dispute,
   userRole,
@@ -53,7 +70,7 @@ const DisputeCard = ({
         </div>
         <div>
           <p className="text-xs text-gray-500 uppercase">Status</p>
-          <p className="font-bold text-gray-900">{dispute.status}</p>
+          <p className="font-bold text-gray-900">{formatDisputeStatus(dispute.status)}</p>
         </div>
         <div>
           <p className="text-xs text-gray-500 uppercase">Milestone ID</p>
@@ -111,6 +128,7 @@ const Disputes = () => {
   const [isResolving, setIsResolving] = useState(false);
   const [splitById, setSplitById] = useState({});
   const [lastResolveTxHash, setLastResolveTxHash] = useState('');
+  const [resolveState, setResolveState] = useState({ step: 0, message: '' });
 
   const loadDisputes = useCallback(async () => {
     if (!provider) {
@@ -172,6 +190,7 @@ const Disputes = () => {
       }
 
       await ensureSepoliaNetwork(provider);
+      setResolveState({ step: 1, message: 'Network verified.' });
 
       const dispute = getDisputeWriteContract(signer);
       const disputeRead = getDisputeReadContract(provider);
@@ -179,16 +198,21 @@ const Disputes = () => {
       if (!arbitrator) {
         throw new Error('Connected wallet is not an arbitrator for this resolver.');
       }
+      setResolveState({ step: 2, message: 'Arbitrator role confirmed.' });
 
       setIsResolving(true);
       setError('');
+      setResolveState({ step: 3, message: 'Submitting resolution transaction...' });
       const tx = await dispute.resolveDispute(milestoneId, releaseToFreelancer);
       setLastResolveTxHash(tx.hash);
+      setResolveState({ step: 4, message: 'Waiting for transaction confirmation...' });
       await tx.wait();
       emitTxConfirmedEvent({ source: 'disputes', milestoneId, txHash: tx.hash });
       await loadDisputes();
+      setResolveState({ step: 4, message: 'Dispute resolved successfully.' });
     } catch (resolveError) {
       setError(resolveError?.shortMessage || resolveError?.message || 'Failed to resolve dispute.');
+      setResolveState({ step: 0, message: '' });
     } finally {
       setIsResolving(false);
     }
@@ -231,6 +255,31 @@ const Disputes = () => {
           >
             View on Etherscan
           </a>
+        </div>
+      )}
+
+      {(isResolving || resolveState.message) && (
+        <div className="mb-6 card">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-bold text-gray-900">Resolution Progress</h2>
+            <span className="text-xs text-gray-600">Step {resolveState.step || 1} / {RESOLVE_FLOW_STEPS.length}</span>
+          </div>
+          <div className="space-y-2">
+            {RESOLVE_FLOW_STEPS.map((step, index) => {
+              const stepNumber = index + 1;
+              const isDone = resolveState.step > stepNumber;
+              const isCurrent = resolveState.step === stepNumber;
+              return (
+                <div key={step} className="flex items-center gap-3">
+                  <div className={`h-6 w-6 rounded-full border text-xs font-semibold flex items-center justify-center ${isDone ? 'bg-green-500 border-green-500 text-white' : isCurrent ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-500'}`}>
+                    {stepNumber}
+                  </div>
+                  <p className={`text-sm ${isDone ? 'text-green-700 font-medium' : isCurrent ? 'text-blue-700 font-medium' : 'text-gray-600'}`}>{step}</p>
+                </div>
+              );
+            })}
+          </div>
+          {resolveState.message && <p className="text-xs text-gray-600 mt-3">{resolveState.message}</p>}
         </div>
       )}
 

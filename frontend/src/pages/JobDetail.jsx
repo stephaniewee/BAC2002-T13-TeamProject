@@ -41,6 +41,16 @@ const ESCROW_STATE_TO_UI = {
   6: 'resolved', // RESOLVED
 };
 
+const MILESTONE_TIMELINE_STEPS = [
+  { value: 0, label: 'Created', shortLabel: 'C' },
+  { value: 1, label: 'Funded', shortLabel: 'F' },
+  { value: 2, label: 'In Progress', shortLabel: 'IP' },
+  { value: 3, label: 'Submitted', shortLabel: 'S' },
+  { value: 4, label: 'Completed', shortLabel: 'OK' },
+  { value: 5, label: 'Disputed', shortLabel: 'D' },
+  { value: 6, label: 'Resolved', shortLabel: 'R' },
+];
+
 const formatDate = (unixSeconds) => {
   if (!unixSeconds) return '-';
   return new Date(Number(unixSeconds) * 1000).toLocaleDateString();
@@ -64,6 +74,20 @@ const formatStatusLabel = (status) => {
   if (!status) return '';
   return status.charAt(0).toUpperCase() + status.slice(1);
 };
+
+const getTimelineStepType = (currentState, stepValue) => {
+  if (currentState === stepValue) return 'current';
+  if (currentState > stepValue) return 'completed';
+  return 'upcoming';
+};
+
+const getStepChipClassName = (stepType) => {
+  if (stepType === 'completed') return 'bg-blue-600 text-white border-blue-600';
+  if (stepType === 'current') return 'bg-blue-100 text-blue-700 border-blue-400';
+  return 'bg-gray-100 text-gray-500 border-gray-300';
+};
+
+const getConnectorClassName = (isComplete) => (isComplete ? 'bg-blue-500' : 'bg-gray-200');
 
 const isBytes32 = (value) => /^0x[0-9a-fA-F]{64}$/.test(value || '');
 
@@ -135,6 +159,7 @@ const JobDetail = () => {
         status: ESCROW_STATE_TO_UI[Number(chainMilestone.state)] || 'pending',
         deadline: formatDate(chainMilestone.deadline),
         releaseTime: formatReleaseWindow(chainMilestone.deadline),
+        stateValue: Number(chainMilestone.state),
         deliverables: [],
         client: chainMilestone.client,
         freelancer: chainMilestone.freelancer,
@@ -329,6 +354,50 @@ const JobDetail = () => {
         <div className="card text-center">
           <p className="text-gray-600 text-sm mb-2">Project Deadline</p>
           <p className="text-lg font-bold text-gray-900">{job.deadline}</p>
+        </div>
+      </div>
+
+      {/* Milestone Timeline */}
+      <div className="card mb-12">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Milestone Timeline</h2>
+        <p className="text-sm text-gray-700 mb-6">
+          Live on-chain progression for this escrow milestone.
+        </p>
+
+        <div className="overflow-x-auto pb-2">
+          <div className="min-w-[760px]">
+            <div className="flex items-center">
+              {MILESTONE_TIMELINE_STEPS.map((step, index) => {
+                const stepType = getTimelineStepType(milestone.stateValue, step.value);
+                const isConnectorComplete = milestone.stateValue > step.value;
+
+                return (
+                  <React.Fragment key={step.value}>
+                    <div className={`h-10 w-10 rounded-full border-2 flex items-center justify-center text-xs font-bold ${getStepChipClassName(stepType)}`}>
+                      {step.shortLabel}
+                    </div>
+                    {index < MILESTONE_TIMELINE_STEPS.length - 1 && (
+                      <div className={`h-1 flex-1 mx-2 rounded ${getConnectorClassName(isConnectorComplete)}`} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 grid grid-cols-7 gap-2 text-xs text-center">
+              {MILESTONE_TIMELINE_STEPS.map((step) => {
+                const stepType = getTimelineStepType(milestone.stateValue, step.value);
+                return (
+                  <div
+                    key={step.value}
+                    className={stepType === 'upcoming' ? 'text-gray-500' : 'text-gray-900 font-medium'}
+                  >
+                    {step.label}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

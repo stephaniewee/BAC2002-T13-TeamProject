@@ -13,6 +13,25 @@ const CheckCircleIcon = () => (
   </svg>
 );
 
+const CREATE_FLOW_STEPS = [
+  'Check Network',
+  'Create Milestone',
+  'Confirm Creation',
+  'Fund Escrow',
+  'Confirm Funding',
+];
+
+const resolveCreateFlowStep = (status) => {
+  if (!status) return 0;
+  if (status.includes('Checking network')) return 1;
+  if (status.includes('Creating milestone transaction')) return 2;
+  if (status.includes('Waiting for milestone creation confirmation')) return 3;
+  if (status.includes('Funding escrow')) return 4;
+  if (status.includes('Waiting for funding confirmation')) return 5;
+  if (status.includes('successfully')) return 5;
+  return 0;
+};
+
 const CreateJob = () => {
   const { isConnected, connectWallet, userRole, provider, signer } = useWallet();
   const [formData, setFormData] = useState({
@@ -27,6 +46,7 @@ const CreateJob = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitState, setSubmitState] = useState({ status: '', error: '', milestoneId: null, createTxHash: '', fundTxHash: '' });
+  const currentFlowStep = resolveCreateFlowStep(submitState.status);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -144,6 +164,34 @@ const CreateJob = () => {
     <div className="max-w-4xl mx-auto px-6 py-12">
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Post a New Job</h1>
       <p className="text-gray-600 mb-8">Create a job with multiple milestones and fund your escrow</p>
+
+      {(isSubmitting || submitState.status || submitState.error) && (
+        <div className="card mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900">Transaction Progress</h2>
+            <span className="text-xs text-gray-600">
+              Step {currentFlowStep || 1} / {CREATE_FLOW_STEPS.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {CREATE_FLOW_STEPS.map((step, index) => {
+              const stepNumber = index + 1;
+              const isDone = currentFlowStep > stepNumber || (currentFlowStep === 5 && submitState.status.includes('successfully'));
+              const isCurrent = currentFlowStep === stepNumber && !submitState.status.includes('successfully');
+              return (
+                <div key={step} className="flex items-center gap-3">
+                  <div className={`h-6 w-6 rounded-full border text-xs font-semibold flex items-center justify-center ${isDone ? 'bg-green-500 border-green-500 text-white' : isCurrent ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-500'}`}>
+                    {stepNumber}
+                  </div>
+                  <p className={`text-sm ${isDone ? 'text-green-700 font-medium' : isCurrent ? 'text-blue-700 font-medium' : 'text-gray-600'}`}>
+                    {step}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Basic Job Info */}
