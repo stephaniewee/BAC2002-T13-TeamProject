@@ -4,7 +4,13 @@ import MilestoneCard from '../components/MilestoneCard';
 import ReputationBadge from '../components/ReputationBadge';
 import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
-import { ensureSepoliaNetwork, getEscrowReadContract, getEscrowWriteContract } from '../utils/contracts';
+import {
+  ensureSepoliaNetwork,
+  getCurrentEthPriceUsd,
+  getEscrowReadContract,
+  getEscrowWriteContract,
+  getWalletReputation,
+} from '../utils/contracts';
 
 const ROLE_ACTIONS = {
   [USER_ROLES.CLIENT]: {
@@ -46,6 +52,9 @@ const JobDetail = () => {
   const { userRole, roleSource, provider, signer } = useWallet();
   const currentActions = ROLE_ACTIONS[userRole] || ROLE_ACTIONS[USER_ROLES.FREELANCER];
   const [milestone, setMilestone] = useState(null);
+  const [clientTier, setClientTier] = useState('NEW');
+  const [clientJobsCompleted, setClientJobsCompleted] = useState('-');
+  const [ethPriceUsd, setEthPriceUsd] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [txState, setTxState] = useState({ loading: false, message: '', error: '', txHash: '' });
@@ -76,6 +85,15 @@ const JobDetail = () => {
 
       const chainMilestone = await escrow.milestones(milestoneId);
       const amountUSD = Number(chainMilestone.amountUSD) / 1e8;
+
+      const [rep, liveEthPriceUsd] = await Promise.all([
+        getWalletReputation(provider, chainMilestone.client),
+        getCurrentEthPriceUsd(provider),
+      ]);
+
+      setClientTier(rep.tierKey);
+      setClientJobsCompleted(rep.jobsCompleted);
+      setEthPriceUsd(liveEthPriceUsd);
 
       setMilestone({
         id: milestoneId,
@@ -164,8 +182,8 @@ const JobDetail = () => {
     client: {
       address: milestone.client,
       name: 'On-chain Client',
-      tier: 'SILVER',
-      jobsCompleted: '-',
+      tier: clientTier,
+      jobsCompleted: clientJobsCompleted,
       escrowAmount: `${milestone.amount} USD`,
     },
     totalAmount: milestone.amount,
@@ -211,6 +229,12 @@ const JobDetail = () => {
                 <div>
                   <p className="text-sm text-gray-500">Total in Escrow</p>
                   <p className="font-semibold text-blue-600">{job.client.escrowAmount} USDC</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">ETH/USD (Chainlink)</p>
+                  <p className="font-semibold text-gray-900">
+                    {ethPriceUsd ? `$${ethPriceUsd.toFixed(2)}` : 'Loading...'}
+                  </p>
                 </div>
               </div>
             </div>
