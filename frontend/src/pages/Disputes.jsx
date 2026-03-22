@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
-import { ensureSepoliaNetwork, getDisputeReadContract, getDisputeWriteContract, getEscrowReadContract } from '../utils/contracts';
+import { emitTxConfirmedEvent, ensureSepoliaNetwork, getDisputeReadContract, getDisputeWriteContract, loadEscrowMilestones, TX_CONFIRMED_EVENT } from '../utils/contracts';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 
 const DISPUTED_STATE = 5;
@@ -9,6 +9,13 @@ const RESOLVED_STATE = 6;
 const formatAddress = (value) => `${value.slice(0, 6)}...${value.slice(-4)}`;
 
 const toUSD = (amountUSD) => (Number(amountUSD) / 1e8).toFixed(2);
+
+const formatDateTime = (unixSeconds) => {
+  if (!unixSeconds) {
+    return 'Unknown time';
+  }
+  return new Date(Number(unixSeconds) * 1000).toLocaleString();
+};
 
 const DisputeCard = ({
   dispute,
@@ -19,16 +26,17 @@ const DisputeCard = ({
   isResolving,
 }) => {
   const isArbitrator = userRole === USER_ROLES.ARBITRATOR;
+  const isResolved = dispute.status === 'resolved';
 
   return (
     <div className="card">
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{dispute.jobTitle}</h3>
-          <p className="text-sm text-gray-600 mt-1">Milestone {dispute.milestoneNumber}</p>
+          <p className="text-sm text-gray-600 mt-1">Opened: {dispute.openedAt}</p>
         </div>
-        <span className="px-3 py-1 bg-red-100 text-red-700 text-sm font-medium rounded-full">
-          In Dispute
+        <span className={`px-3 py-1 text-sm font-medium rounded-full ${isResolved ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          {isResolved ? 'Resolved' : 'In Dispute'}
         </span>
       </div>
 
@@ -114,28 +122,22 @@ const Disputes = () => {
       setError('');
       await ensureSepoliaNetwork(provider);
 
-      const escrow = getEscrowReadContract(provider);
-      const total = Number(await escrow.milestoneCount());
-      const loaded = [];
-
-      for (let i = 0; i < total; i += 1) {
-        const milestone = await escrow.milestones(i);
-        const stateValue = Number(milestone.state);
-
-        if (stateValue !== DISPUTED_STATE && stateValue !== RESOLVED_STATE) {
-          continue;
-        }
-
-        loaded.push({
-          id: i,
-          jobTitle: `Milestone ${i}`,
-          milestoneNumber: i,
+      const rows = await loadEscrowMilestones(provider);
+      const loaded = rows
+        .filter(({ milestone }) => {
+          const stateValue = Number(milestone.state);
+          return stateValue === DISPUTED_STATE || stateValue === RESOLVED_STATE;
+        })
+        .map(({ id, milestone, meta }) => ({
+          id,
+          jobTitle: `Dispute #${id} · ${formatAddress(milestone.client)} vs ${formatAddress(milestone.freelancer)}`,
+          milestoneNumber: id,
           amountUSD: milestone.amountUSD,
-          status: stateValue === DISPUTED_STATE ? 'pending_arbitration' : 'resolved',
+          status: Number(milestone.state) === DISPUTED_STATE ? 'pending_arbitration' : 'resolved',
           client: milestone.client,
           freelancer: milestone.freelancer,
-        });
-      }
+          openedAt: formatDateTime(meta?.blockTimestamp),
+        }));
 
       setDisputes(loaded);
       setSplitById(Object.fromEntries(loaded.map((item) => [item.id, 50])));
@@ -148,6 +150,15 @@ const Disputes = () => {
 
   useEffect(() => {
     loadDisputes();
+  }, [loadDisputes]);
+
+  useEffect(() => {
+    const refresh = () => {
+      loadDisputes();
+    };
+
+    window.addEventListener(TX_CONFIRMED_EVENT, refresh);
+    return () => window.removeEventListener(TX_CONFIRMED_EVENT, refresh);
   }, [loadDisputes]);
 
   const handleSplitChange = (id, value) => {
@@ -174,6 +185,7 @@ const Disputes = () => {
       const tx = await dispute.resolveDispute(milestoneId, releaseToFreelancer);
       setLastResolveTxHash(tx.hash);
       await tx.wait();
+      emitTxConfirmedEvent({ source: 'disputes', milestoneId, txHash: tx.hash });
       await loadDisputes();
     } catch (resolveError) {
       setError(resolveError?.shortMessage || resolveError?.message || 'Failed to resolve dispute.');

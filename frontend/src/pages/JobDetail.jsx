@@ -5,10 +5,11 @@ import ReputationBadge from '../components/ReputationBadge';
 import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 import {
+  emitTxConfirmedEvent,
   ensureSepoliaNetwork,
   getCurrentEthPriceUsd,
-  getEscrowReadContract,
   getEscrowWriteContract,
+  loadEscrowMilestones,
   getWalletReputation,
 } from '../utils/contracts';
 
@@ -45,6 +46,25 @@ const formatDate = (unixSeconds) => {
   return new Date(Number(unixSeconds) * 1000).toLocaleDateString();
 };
 
+const formatReleaseWindow = (deadlineSeconds) => {
+  if (!deadlineSeconds) {
+    return 'Unknown';
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (Number(deadlineSeconds) <= now) {
+    return 'Deadline passed';
+  }
+
+  const days = Math.ceil((Number(deadlineSeconds) - now) / 86400);
+  return `${days} day${days === 1 ? '' : 's'} left`;
+};
+
+const formatStatusLabel = (status) => {
+  if (!status) return '';
+  return status.charAt(0).toUpperCase() + status.slice(1);
+};
+
 const isBytes32 = (value) => /^0x[0-9a-fA-F]{64}$/.test(value || '');
 
 const JobDetail = () => {
@@ -58,6 +78,7 @@ const JobDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [txState, setTxState] = useState({ loading: false, message: '', error: '', txHash: '' });
+  const [copyStatus, setCopyStatus] = useState('');
 
   const milestoneId = Number(id);
 
@@ -77,13 +98,18 @@ const JobDetail = () => {
       setError('');
       await ensureSepoliaNetwork(provider);
 
-      const escrow = getEscrowReadContract(provider);
-      const total = Number(await escrow.milestoneCount());
+      const rows = await loadEscrowMilestones(provider);
+      const total = rows.length;
       if (milestoneId < 0 || milestoneId >= total) {
         throw new Error(`Milestone ${milestoneId} was not found on-chain.`);
       }
 
-      const chainMilestone = await escrow.milestones(milestoneId);
+      const row = rows.find((entry) => entry.id === milestoneId);
+      const chainMilestone = row?.milestone;
+      const eventMeta = row?.meta;
+      if (!chainMilestone) {
+        throw new Error(`Milestone ${milestoneId} data could not be loaded.`);
+      }
       const amountUSD = Number(chainMilestone.amountUSD) / 1e8;
 
       const [rep, liveEthPriceUsd] = await Promise.all([
@@ -95,20 +121,26 @@ const JobDetail = () => {
       setClientJobsCompleted(rep.jobsCompleted);
       setEthPriceUsd(liveEthPriceUsd);
 
+      const shortClient = `${chainMilestone.client.slice(0, 6)}...${chainMilestone.client.slice(-4)}`;
+      const shortFreelancer = `${chainMilestone.freelancer.slice(0, 6)}...${chainMilestone.freelancer.slice(-4)}`;
+      const createdAt = eventMeta?.blockTimestamp ? formatDate(eventMeta.blockTimestamp) : formatDate(chainMilestone.deadline);
+
       setMilestone({
         id: milestoneId,
-        title: `Escrow Milestone #${milestoneId}`,
+        title: `Milestone #${milestoneId} · ${shortClient} -> ${shortFreelancer}`,
         description: chainMilestone.deliverableHash === '0x0000000000000000000000000000000000000000000000000000000000000000'
           ? 'No deliverable submitted yet.'
           : `Deliverable hash submitted: ${chainMilestone.deliverableHash}`,
         amount: amountUSD.toFixed(2),
         status: ESCROW_STATE_TO_UI[Number(chainMilestone.state)] || 'pending',
         deadline: formatDate(chainMilestone.deadline),
-        releaseTime: '-',
+        releaseTime: formatReleaseWindow(chainMilestone.deadline),
         deliverables: [],
         client: chainMilestone.client,
         freelancer: chainMilestone.freelancer,
         lockedETH: chainMilestone.lockedETH,
+        createdAt,
+        creationTxHash: eventMeta?.txHash || '',
       });
     } catch (loadError) {
       setError(loadError?.shortMessage || loadError?.message || 'Failed to load milestone data.');
@@ -132,6 +164,7 @@ const JobDetail = () => {
       const tx = await call();
       setTxState({ loading: true, message: 'Waiting for confirmation...', error: '', txHash: tx.hash });
       await tx.wait();
+      emitTxConfirmedEvent({ source: 'job-detail', milestoneId: milestoneId, txHash: tx.hash });
       setTxState({ loading: false, message: 'Transaction confirmed.', error: '', txHash: tx.hash });
       await loadMilestone();
     } catch (txError) {
@@ -159,6 +192,19 @@ const JobDetail = () => {
     await runWriteTx('Raising dispute for this milestone...', () => escrow.raiseDispute(targetMilestoneId));
   };
 
+  const handleCopyAddress = async (address) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopyStatus('Address copied.');
+    } catch {
+      setCopyStatus('Copy failed. Please copy manually.');
+    }
+
+    setTimeout(() => {
+      setCopyStatus('');
+    }, 2000);
+  };
+
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-6 py-12">
@@ -184,14 +230,17 @@ const JobDetail = () => {
       name: 'On-chain Client',
       tier: clientTier,
       jobsCompleted: clientJobsCompleted,
-      escrowAmount: `${milestone.amount} USD`,
+      escrowAmount: milestone.amount,
     },
     totalAmount: milestone.amount,
     status: milestone.status,
-    createdAt: '-',
+    createdAt: milestone.createdAt,
     deadline: milestone.deadline,
     milestones: [milestone],
   };
+
+  const contactAddress = userRole === USER_ROLES.CLIENT ? milestone.freelancer : milestone.client;
+  const contactLabel = userRole === USER_ROLES.CLIENT ? 'Freelancer' : 'Client';
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-12">
@@ -203,7 +252,7 @@ const JobDetail = () => {
             <p className="text-gray-600">Posted on {job.createdAt}</p>
           </div>
           <span className="px-4 py-2 bg-blue-100 text-blue-700 font-semibold rounded-lg">
-            {job.status}
+            {formatStatusLabel(job.status)}
           </span>
         </div>
 
@@ -228,7 +277,7 @@ const JobDetail = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Total in Escrow</p>
-                  <p className="font-semibold text-blue-600">{job.client.escrowAmount} USDC</p>
+                  <p className="font-semibold text-blue-600">{job.client.escrowAmount} USD</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">ETH/USD (Chainlink)</p>
@@ -238,9 +287,24 @@ const JobDetail = () => {
                 </div>
               </div>
             </div>
-            <button className="btn-primary">
-              {userRole === USER_ROLES.CLIENT ? 'Message Freelancer' : 'Contact Client'}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <a
+                href={`${NETWORK_CONFIG.EXPLORER_URL}/address/${contactAddress}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary"
+              >
+                View {contactLabel} Wallet
+              </a>
+              <button
+                type="button"
+                onClick={() => handleCopyAddress(contactAddress)}
+                className="btn-secondary"
+              >
+                Copy {contactLabel} Address
+              </button>
+              {copyStatus && <p className="text-xs text-gray-600">{copyStatus}</p>}
+            </div>
           </div>
         </div>
 
@@ -296,6 +360,19 @@ const JobDetail = () => {
             className="underline"
           >
             View latest transaction on Etherscan
+          </a>
+        </div>
+      )}
+
+      {!txState.txHash && milestone.creationTxHash && (
+        <div className="mb-8 text-sm text-gray-700">
+          <a
+            href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${milestone.creationTxHash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            View milestone creation transaction on Etherscan
           </a>
         </div>
       )}

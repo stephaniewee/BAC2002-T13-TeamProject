@@ -3,6 +3,7 @@ import { CONTRACT_ADDRESSES, NETWORK_CONFIG } from '../constants/contracts';
 
 // Minimal ABIs used by current UI flows.
 const ESCROW_ABI = [
+    'event MilestoneCreated(uint256 indexed id, address client, address freelancer, uint256 amountUSD)',
     'function milestoneCount() view returns (uint256)',
     'function milestones(uint256) view returns (address client, address freelancer, uint256 amountUSD, uint256 lockedETH, uint8 state, uint256 deadline, bytes32 deliverableHash)',
     'function createMilestone(address freelancer, uint256 amountUSD, uint256 deadline) returns (uint256)',
@@ -123,4 +124,65 @@ export const quoteEthForUsd = async (provider, usdAmount, bufferBps = 0) => {
     const priceFeed = getChainlinkPriceFeedReadContract(provider);
     const usdAmount8 = BigInt(Math.round(Number(usdAmount) * 1e8));
     return priceFeed.getETHAmount(usdAmount8, BigInt(bufferBps));
+};
+
+export const TX_CONFIRMED_EVENT = 'freelancechain:tx-confirmed';
+
+export const emitTxConfirmedEvent = (detail = {}) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    window.dispatchEvent(new CustomEvent(TX_CONFIRMED_EVENT, { detail }));
+};
+
+export const loadEscrowMilestones = async (provider) => {
+    const escrow = getEscrowReadContract(provider);
+    const count = Number(await escrow.milestoneCount());
+
+    if (count === 0) {
+        return [];
+    }
+
+    const createdEvents = await escrow.queryFilter(escrow.filters.MilestoneCreated(), 0, 'latest');
+    const uniqueBlockNumbers = [...new Set(createdEvents.map((evt) => Number(evt.blockNumber)).filter((value) => Number.isFinite(value)))];
+    const blockMap = new Map();
+
+    await Promise.all(
+        uniqueBlockNumbers.map(async (blockNumber) => {
+            const block = await provider.getBlock(blockNumber);
+            blockMap.set(blockNumber, block || null);
+        })
+    );
+
+    const metaById = new Map(
+        createdEvents.map((evt) => {
+            const id = Number(evt.args?.id ?? -1);
+            const block = blockMap.get(Number(evt.blockNumber));
+            return [
+                id,
+                {
+                    createdClient: evt.args?.client,
+                    createdFreelancer: evt.args?.freelancer,
+                    createdAmountUSD: evt.args?.amountUSD,
+                    txHash: evt.transactionHash,
+                    blockNumber: evt.blockNumber,
+                    blockTimestamp: block?.timestamp ?? null,
+                },
+            ];
+        })
+    );
+
+    const rows = await Promise.all(
+        Array.from({ length: count }, async (_, id) => {
+            const milestone = await escrow.milestones(id);
+            return {
+                id,
+                milestone,
+                meta: metaById.get(id) || null,
+            };
+        })
+    );
+
+    return rows;
 };

@@ -16,10 +16,9 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 
 | Contract | Address | Etherscan |
 |----------|---------|-----------|
-| ReputationSBT | `0xcEBF104e6dC81c40a76050bC529E5f9046eFA5c1` | [View](https://sepolia.etherscan.io/address/0xcEBF104e6dC81c40a76050bC529E5f9046eFA5c1#code) |
-| EscrowContract | `0xaD07b4Df0D829a54cC654322709DB37950a418Cf` | [View](https://sepolia.etherscan.io/address/0xaD07b4Df0D829a54cC654322709DB37950a418Cf#code) |
-| DisputeResolver | `0x7386A5F87B2827Ed369C7ef4Ae6eB51FDEc47a11` | [View](https://sepolia.etherscan.io/address/0x7386A5F87B2827Ed369C7ef4Ae6eB51FDEc47a11#code) |
-| ChainlinkPriceFeed | `0x3F278C8322085A0731CB01b5d4D79ee010A2894d` | [View](https://sepolia.etherscan.io/address/0x3F278C8322085A0731CB01b5d4D79ee010A2894d#code) |
+| EscrowContract | `0x57006E4CCf82bBB7Fe8486dbdfA673c3B38211FD` | [View](https://sepolia.etherscan.io/address/0x57006E4CCf82bBB7Fe8486dbdfA673c3B38211FD#code) |
+| DisputeResolver | `0xBC849c92bBC6f2978106E7bf317fbcF5e76faC09` | [View](https://sepolia.etherscan.io/address/0xBC849c92bBC6f2978106E7bf317fbcF5e76faC09#code) |
+| MockReputationSBT | `0x9c9F204B8FfC8DcA83F24Dc48670fF5B4DA673F7` | [View](https://sepolia.etherscan.io/address/0x9c9F204B8FfC8DcA83F24Dc48670fF5B4DA673F7#code) |
 | Chainlink ETH/USD | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | Sepolia feed |
 
 ---

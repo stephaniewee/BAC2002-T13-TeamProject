@@ -1,6 +1,71 @@
 import React, { useState } from 'react';
 import { MILESTONE_STATUS, USER_ROLES } from '../constants/contracts';
 
+const StatusIcon = ({ status }) => {
+  if (status === MILESTONE_STATUS.PENDING) {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+        <path
+          fillRule="evenodd"
+          d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-12a.75.75 0 00-1.5 0v4a.75.75 0 00.22.53l2.5 2.5a.75.75 0 101.06-1.06l-2.28-2.28V6z"
+          clipRule="evenodd"
+        />
+      </svg>
+    );
+  }
+
+  if (status === MILESTONE_STATUS.SUBMITTED) {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+        <path
+          fillRule="evenodd"
+          d="M3 10a.75.75 0 01.75-.75h8.19L9.72 7.03a.75.75 0 111.06-1.06l3.5 3.5a.75.75 0 010 1.06l-3.5 3.5a.75.75 0 11-1.06-1.06l2.22-2.22H3.75A.75.75 0 013 10z"
+          clipRule="evenodd"
+        />
+      </svg>
+    );
+  }
+
+  if (status === MILESTONE_STATUS.APPROVED) {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+        <path
+          fillRule="evenodd"
+          d="M16.704 5.29a1 1 0 010 1.414l-7.07 7.07a1 1 0 01-1.414 0L4.696 10.25a1 1 0 111.414-1.414l2.817 2.817 6.363-6.363a1 1 0 011.414 0z"
+          clipRule="evenodd"
+        />
+      </svg>
+    );
+  }
+
+  if (status === MILESTONE_STATUS.DISPUTED) {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+        <path
+          fillRule="evenodd"
+          d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-5a.75.75 0 001.5 0v-3a.75.75 0 00-1.5 0v3zm0-6a.75.75 0 001.5 0V7a.75.75 0 00-1.5 0z"
+          clipRule="evenodd"
+        />
+      </svg>
+    );
+  }
+
+  if (status === MILESTONE_STATUS.RESOLVED) {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden="true">
+        <path
+          fillRule="evenodd"
+          d="M16.704 5.29a1 1 0 010 1.414l-7.07 7.07a1 1 0 01-1.414 0L4.696 10.25a1 1 0 111.414-1.414l2.817 2.817 6.363-6.363a1 1 0 011.414 0z"
+          clipRule="evenodd"
+        />
+        <path d="M13.5 4.5a.75.75 0 011.06 0l1.44 1.44a.75.75 0 11-1.06 1.06L13.5 5.56a.75.75 0 010-1.06z" />
+      </svg>
+    );
+  }
+
+  return null;
+};
+
 const MilestoneCard = ({
   milestone,
   index,
@@ -11,6 +76,11 @@ const MilestoneCard = ({
   txState,
 }) => {
   const [deliverableHash, setDeliverableHash] = useState('');
+
+  const formatStatusLabel = (status) => {
+    if (!status) return '';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -30,14 +100,6 @@ const MilestoneCard = ({
   };
 
   const colors = getStatusColor(milestone.status);
-  const statusIcon = {
-    [MILESTONE_STATUS.PENDING]: '⏳',
-    [MILESTONE_STATUS.SUBMITTED]: '📤',
-    [MILESTONE_STATUS.APPROVED]: '✓',
-    [MILESTONE_STATUS.DISPUTED]: '⚠',
-    [MILESTONE_STATUS.RESOLVED]: '🏁',
-  };
-
   return (
     <div className="card">
       <div className="flex justify-between items-start mb-3">
@@ -47,8 +109,9 @@ const MilestoneCard = ({
           </h3>
           <p className="text-sm text-gray-600 mt-1">{milestone.description}</p>
         </div>
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${colors.bg} ${colors.text}`}>
-          {statusIcon[milestone.status]} {milestone.status}
+        <span className={`px-3 py-1 rounded-full text-sm font-medium ${colors.bg} ${colors.text} inline-flex items-center gap-1`}>
+          <StatusIcon status={milestone.status} />
+          <span>{formatStatusLabel(milestone.status)}</span>
         </span>
       </div>
 
@@ -73,8 +136,9 @@ const MilestoneCard = ({
             type="text"
             value={deliverableHash}
             onChange={(event) => setDeliverableHash(event.target.value)}
-            placeholder="Deliverable hash (bytes32, 0x...64 hex)"
+            placeholder="Deliverable hash (bytes32, 0x...64 hex) *"
             className="flex-1 input-base text-sm"
+            required
           />
           <button
             onClick={() => onSubmitWork(milestone.id, deliverableHash)}

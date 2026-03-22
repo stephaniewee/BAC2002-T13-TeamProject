@@ -1,22 +1,19 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { USER_ROLES } from '../constants/contracts';
+import OnchainHealthPanel from '../components/OnchainHealthPanel';
+import {
+  ensureSepoliaNetwork,
+  getDisputeReadContract,
+  getWalletReputation,
+  loadEscrowMilestones,
+  TX_CONFIRMED_EVENT,
+} from '../utils/contracts';
 
 const DASHBOARD_CONTENT = {
   [USER_ROLES.CLIENT]: {
     subtitle: 'Track funded jobs, review milestones, and handle disputes quickly.',
-    stats: [
-      { label: 'Open Jobs', value: '4', accent: 'text-gray-900' },
-      { label: 'Milestones Awaiting Review', value: '2', accent: 'text-yellow-600' },
-      { label: 'Total Escrow Locked', value: '8,750 USDC', accent: 'text-blue-600' },
-      { label: 'Pending Disputes', value: '1', accent: 'text-red-600' },
-    ],
-    activity: [
-      { title: 'SaaS Dashboard Design', detail: 'Milestone 2 was submitted for review.', meta: 'Awaiting your approval', border: 'border-l-yellow-500' },
-      { title: 'Marketing Website Refresh', detail: 'Freelancer accepted job terms.', meta: 'Started 1 day ago', border: 'border-l-blue-500' },
-      { title: 'Smart Contract Audit', detail: 'Final milestone approved.', meta: '-1,250 USDC released', border: 'border-l-green-500' },
-    ],
     actions: [
       { label: 'Post New Job', to: '/create-job', primary: true },
       { label: 'Review Disputes', to: '/disputes' },
@@ -25,49 +22,283 @@ const DASHBOARD_CONTENT = {
   },
   [USER_ROLES.FREELANCER]: {
     subtitle: 'Discover opportunities, submit milestones, and grow your on-chain reputation.',
-    stats: [
-      { label: 'Active Jobs', value: '3', accent: 'text-gray-900' },
-      { label: 'Pending Submissions', value: '1', accent: 'text-yellow-600' },
-      { label: 'Total Earned', value: '5,420 USDC', accent: 'text-green-600' },
-      { label: 'Reputation Tier', value: 'Gold ★', accent: 'text-yellow-600' },
-    ],
-    activity: [
-      { title: 'Logo Design Sprint', detail: 'Milestone approved by client.', meta: '+500 USDC', border: 'border-l-green-500' },
-      { title: 'Website Redesign', detail: 'You applied to this job.', meta: '2 days ago', border: 'border-l-blue-500' },
-      { title: 'Mobile App Design', detail: 'Waiting for your submission.', meta: 'Due in 2 days', border: 'border-l-yellow-500' },
-    ],
     actions: [
       { label: 'Browse Available Gigs', to: '/browse', primary: true },
       { label: 'Open Dispute Center', to: '/disputes' },
-      { label: 'View Active Job', to: '/jobs/1' },
+      { label: 'View My Jobs', to: '/my-jobs' },
     ],
   },
   [USER_ROLES.ARBITRATOR]: {
     subtitle: 'Review evidence and resolve disputes with transparent fund split votes.',
-    stats: [
-      { label: 'Pending Cases', value: '2', accent: 'text-red-600' },
-      { label: 'Cases Resolved This Week', value: '5', accent: 'text-green-600' },
-      { label: 'Avg Resolution Time', value: '19 hrs', accent: 'text-blue-600' },
-      { label: 'Arbitrator Reputation', value: 'Silver ★', accent: 'text-gray-900' },
-    ],
-    activity: [
-      { title: 'UI Design for SaaS Dashboard', detail: 'New dispute opened for milestone 2 quality mismatch.', meta: 'Vote needed', border: 'border-l-red-500' },
-      { title: 'Smart Contract Audit', detail: 'Case resolved with 60/40 split.', meta: 'Closed yesterday', border: 'border-l-green-500' },
-      { title: 'API Integration Service', detail: 'Client raised new evidence packet.', meta: 'Updated 3 hours ago', border: 'border-l-blue-500' },
-    ],
     actions: [
       { label: 'Review Disputes', to: '/disputes', primary: true },
-      { label: 'Inspect Job Context', to: '/jobs/1' },
+      { label: 'Inspect Arbitration Queue', to: '/my-jobs' },
       { label: 'Browse Open Jobs', to: '/browse' },
     ],
   },
 };
 
+const ESCROW_STATE = {
+  CREATED: 0,
+  FUNDED: 1,
+  IN_PROGRESS: 2,
+  PENDING_REVIEW: 3,
+  COMPLETED: 4,
+  DISPUTED: 5,
+  RESOLVED: 6,
+};
+
+const byNewest = (a, b) => b.id - a.id;
+
+const sumUsd = (rows) => rows.reduce((acc, row) => acc + (Number(row.milestone.amountUSD) / 1e8), 0);
+
+const toStateLabel = (stateValue) => {
+  if (stateValue === ESCROW_STATE.CREATED) return 'Created';
+  if (stateValue === ESCROW_STATE.FUNDED) return 'Funded';
+  if (stateValue === ESCROW_STATE.IN_PROGRESS) return 'In Progress';
+  if (stateValue === ESCROW_STATE.PENDING_REVIEW) return 'Pending Review';
+  if (stateValue === ESCROW_STATE.COMPLETED) return 'Completed';
+  if (stateValue === ESCROW_STATE.DISPUTED) return 'Disputed';
+  return 'Resolved';
+};
+
+const toActivityBorder = (stateValue) => {
+  if (stateValue === ESCROW_STATE.PENDING_REVIEW) return 'border-l-yellow-500';
+  if (stateValue === ESCROW_STATE.DISPUTED) return 'border-l-red-500';
+  if (stateValue === ESCROW_STATE.COMPLETED || stateValue === ESCROW_STATE.RESOLVED) return 'border-l-green-500';
+  return 'border-l-blue-500';
+};
+
 const Home = () => {
-  const { isConnected, connectWallet, userRole, roleSource } = useWallet();
+  const { isConnected, connectWallet, userRole, roleSource, provider, account } = useWallet();
+  const [stats, setStats] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const roleLabel = userRole.charAt(0).toUpperCase() + userRole.slice(1);
   const dashboard = DASHBOARD_CONTENT[userRole] || DASHBOARD_CONTENT[USER_ROLES.FREELANCER];
+
+  const loadDashboard = useCallback(async () => {
+    if (!provider || !account) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      await ensureSepoliaNetwork(provider);
+      const allRows = await loadEscrowMilestones(provider);
+      const current = account.toLowerCase();
+
+      if (userRole === USER_ROLES.CLIENT) {
+        const mine = allRows.filter((row) => row.milestone.client.toLowerCase() === current);
+        const openCount = mine.filter((row) => {
+          const stateValue = Number(row.milestone.state);
+          return stateValue < ESCROW_STATE.COMPLETED;
+        }).length;
+        const reviewCount = mine.filter((row) => Number(row.milestone.state) === ESCROW_STATE.PENDING_REVIEW).length;
+        const pendingDisputes = mine.filter((row) => Number(row.milestone.state) === ESCROW_STATE.DISPUTED).length;
+
+        setStats([
+          { label: 'Open Jobs', value: String(openCount), accent: 'text-gray-900' },
+          { label: 'Milestones Awaiting Review', value: String(reviewCount), accent: 'text-yellow-600' },
+          { label: 'Total Escrow Value', value: `${sumUsd(mine).toFixed(2)} USD`, accent: 'text-blue-600' },
+          { label: 'Pending Disputes', value: String(pendingDisputes), accent: 'text-red-600' },
+        ]);
+
+        setActivity(
+          mine
+            .sort(byNewest)
+            .slice(0, 5)
+            .map((row) => {
+              const stateValue = Number(row.milestone.state);
+              return {
+                title: `Milestone #${row.id}`,
+                detail: `State changed to ${toStateLabel(stateValue)}.`,
+                meta: `${(Number(row.milestone.amountUSD) / 1e8).toFixed(2)} USD`,
+                border: toActivityBorder(stateValue),
+              };
+            })
+        );
+
+        return;
+      }
+
+      if (userRole === USER_ROLES.FREELANCER) {
+        const mine = allRows.filter((row) => row.milestone.freelancer.toLowerCase() === current);
+        const active = mine.filter((row) => Number(row.milestone.state) <= ESCROW_STATE.DISPUTED).length;
+        const pendingSubmission = mine.filter((row) => {
+          const stateValue = Number(row.milestone.state);
+          return stateValue === ESCROW_STATE.FUNDED || stateValue === ESCROW_STATE.IN_PROGRESS;
+        }).length;
+        const settled = mine.filter((row) => {
+          const stateValue = Number(row.milestone.state);
+          return stateValue === ESCROW_STATE.COMPLETED || stateValue === ESCROW_STATE.RESOLVED;
+        });
+        const rep = await getWalletReputation(provider, account);
+
+        setStats([
+          { label: 'Active Jobs', value: String(active), accent: 'text-gray-900' },
+          { label: 'Pending Submissions', value: String(pendingSubmission), accent: 'text-yellow-600' },
+          { label: 'Settled Value', value: `${sumUsd(settled).toFixed(2)} USD`, accent: 'text-green-600' },
+          { label: 'Reputation Tier', value: `${rep.tierKey} ★`, accent: 'text-yellow-600' },
+        ]);
+
+        setActivity(
+          mine
+            .sort(byNewest)
+            .slice(0, 5)
+            .map((row) => {
+              const stateValue = Number(row.milestone.state);
+              return {
+                title: `Milestone #${row.id}`,
+                detail: `Client ${row.milestone.client.slice(0, 6)}...${row.milestone.client.slice(-4)} · ${toStateLabel(stateValue)}`,
+                meta: `${(Number(row.milestone.amountUSD) / 1e8).toFixed(2)} USD`,
+                border: toActivityBorder(stateValue),
+              };
+            })
+        );
+
+        return;
+      }
+
+      const disputeRows = allRows.filter((row) => {
+        const stateValue = Number(row.milestone.state);
+        return stateValue === ESCROW_STATE.DISPUTED || stateValue === ESCROW_STATE.RESOLVED;
+      });
+      const pendingCases = disputeRows.filter((row) => Number(row.milestone.state) === ESCROW_STATE.DISPUTED).length;
+      const resolvedCases = disputeRows.filter((row) => Number(row.milestone.state) === ESCROW_STATE.RESOLVED).length;
+
+      let isArbitrator = false;
+      try {
+        const disputeContract = getDisputeReadContract(provider);
+        isArbitrator = await disputeContract.isArbitrator(account);
+      } catch {
+        isArbitrator = false;
+      }
+
+      setStats([
+        { label: 'Pending Cases', value: String(pendingCases), accent: 'text-red-600' },
+        { label: 'Resolved Cases', value: String(resolvedCases), accent: 'text-green-600' },
+        { label: 'Total Case Value', value: `${sumUsd(disputeRows).toFixed(2)} USD`, accent: 'text-blue-600' },
+        { label: 'Arbitrator Access', value: isArbitrator ? 'Granted' : 'Missing', accent: isArbitrator ? 'text-gray-900' : 'text-red-600' },
+      ]);
+
+      setActivity(
+        disputeRows
+          .sort(byNewest)
+          .slice(0, 5)
+          .map((row) => {
+            const stateValue = Number(row.milestone.state);
+            return {
+              title: `Dispute #${row.id}`,
+              detail: `Client ${row.milestone.client.slice(0, 6)}...${row.milestone.client.slice(-4)} vs Freelancer ${row.milestone.freelancer.slice(0, 6)}...${row.milestone.freelancer.slice(-4)}`,
+              meta: toStateLabel(stateValue),
+              border: toActivityBorder(stateValue),
+            };
+          })
+      );
+    } catch (loadError) {
+      setError(loadError?.shortMessage || loadError?.message || 'Failed to load dashboard data from chain.');
+      setStats([]);
+      setActivity([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [provider, account, userRole]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    const refresh = () => {
+      loadDashboard();
+    };
+
+    window.addEventListener(TX_CONFIRMED_EVENT, refresh);
+    return () => window.removeEventListener(TX_CONFIRMED_EVENT, refresh);
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!provider || !account) {
+      return;
+    }
+
+    const refresh = () => {
+      loadDashboard();
+    };
+
+    const onFocus = () => {
+      refresh();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+
+    let unsubscribeBlock = null;
+    try {
+      if (typeof provider.on === 'function') {
+        provider.on('block', refresh);
+        unsubscribeBlock = () => {
+          if (typeof provider.off === 'function') {
+            provider.off('block', refresh);
+          }
+        };
+      }
+    } catch {
+      unsubscribeBlock = null;
+    }
+
+    const intervalId = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (unsubscribeBlock) {
+        unsubscribeBlock();
+      }
+    };
+  }, [provider, account, loadDashboard]);
+
+  const visibleStats = useMemo(() => {
+    if (stats.length > 0) {
+      return stats;
+    }
+
+    if (userRole === USER_ROLES.FREELANCER) {
+      return [
+        { label: 'Active Jobs', value: '0', accent: 'text-gray-500' },
+        { label: 'Pending Submissions', value: '0', accent: 'text-gray-500' },
+        { label: 'Settled Value', value: '0.00 USD', accent: 'text-gray-500' },
+        { label: 'Reputation Tier', value: 'NEW ★', accent: 'text-gray-500' },
+      ];
+    }
+
+    if (userRole === USER_ROLES.ARBITRATOR) {
+      return [
+        { label: 'Pending Cases', value: '0', accent: 'text-gray-500' },
+        { label: 'Resolved Cases', value: '0', accent: 'text-gray-500' },
+        { label: 'Total Case Value', value: '0.00 USD', accent: 'text-gray-500' },
+        { label: 'Arbitrator Access', value: 'Unknown', accent: 'text-gray-500' },
+      ];
+    }
+
+    return [
+      { label: 'Open Jobs', value: '0', accent: 'text-gray-500' },
+      { label: 'Milestones Awaiting Review', value: '0', accent: 'text-gray-500' },
+      { label: 'Total Escrow Value', value: '0.00 USD', accent: 'text-gray-500' },
+      { label: 'Pending Disputes', value: '0', accent: 'text-gray-500' },
+    ];
+  }, [stats, userRole]);
 
   if (!isConnected) {
     return (
@@ -116,6 +347,8 @@ const Home = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
+      <OnchainHealthPanel />
+
       <div className="mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">Dashboard</h1>
         <p className="text-gray-600">{dashboard.subtitle}</p>
@@ -125,8 +358,16 @@ const Home = () => {
         </div>
       </div>
 
+      {loading && (
+        <div className="card mb-8 text-sm text-gray-700">Loading live dashboard data from chain...</div>
+      )}
+
+      {error && (
+        <div className="card mb-8 border border-red-200 bg-red-50 text-sm text-red-700">{error}</div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-        {dashboard.stats.map((stat) => (
+        {visibleStats.map((stat) => (
           <div key={stat.label} className="card">
             <p className="text-gray-600 text-sm mb-2">{stat.label}</p>
             <p className={`text-3xl font-bold ${stat.accent}`}>{stat.value}</p>
@@ -137,19 +378,23 @@ const Home = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Recent Activity</h2>
-          <div className="space-y-4">
-            {dashboard.activity.map((item) => (
-              <div key={item.title} className={`card border-l-4 ${item.border}`}>
-                <div className="flex justify-between">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{item.title}</h3>
-                    <p className="text-sm text-gray-600">{item.detail}</p>
+          {activity.length === 0 ? (
+            <div className="card text-sm text-gray-600">No on-chain activity for this role yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {activity.map((item) => (
+                <div key={`${item.title}-${item.meta}`} className={`card border-l-4 ${item.border}`}>
+                  <div className="flex justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">{item.title}</h3>
+                      <p className="text-sm text-gray-600">{item.detail}</p>
+                    </div>
+                    <span className="text-sm text-gray-500">{item.meta}</span>
                   </div>
-                  <span className="text-sm text-gray-500">{item.meta}</span>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

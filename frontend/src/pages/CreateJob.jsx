@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
-import { ensureSepoliaNetwork, getEscrowWriteContract } from '../utils/contracts';
+import { emitTxConfirmedEvent, ensureSepoliaNetwork, getEscrowWriteContract } from '../utils/contracts';
+
+const CheckCircleIcon = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-green-600 mt-0.5" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.704-9.71a1 1 0 00-1.414-1.414L9 10.166 7.71 8.876a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
 
 const CreateJob = () => {
   const { isConnected, connectWallet, userRole, provider, signer } = useWallet();
@@ -92,6 +102,13 @@ const CreateJob = () => {
       setSubmitState({ status: 'Waiting for funding confirmation...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: fundTx.hash });
       await fundTx.wait();
 
+      emitTxConfirmedEvent({
+        source: 'create-job',
+        milestoneId: Number(nextMilestoneId),
+        createTxHash: createTx.hash,
+        fundTxHash: fundTx.hash,
+      });
+
       setSubmitState({ status: 'Milestone created and funded successfully.', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: fundTx.hash });
     } catch (error) {
       setSubmitState((prev) => ({
@@ -136,7 +153,7 @@ const CreateJob = () => {
           <div className="space-y-4">
             <div>
               <label htmlFor="freelancer" className="block text-sm font-medium text-gray-700 mb-2">
-                Freelancer Wallet Address
+                Freelancer Wallet Address <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -152,7 +169,7 @@ const CreateJob = () => {
 
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                Job Title
+                Job Title <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -160,7 +177,7 @@ const CreateJob = () => {
                 name="title"
                 value={formData.title}
                 onChange={handleInputChange}
-                placeholder="e.g., UI Design for SaaS Dashboard"
+                placeholder="Enter job title"
                 className="input-base"
                 required
               />
@@ -168,7 +185,7 @@ const CreateJob = () => {
 
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Job Description
+                Job Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 id="description"
@@ -185,7 +202,7 @@ const CreateJob = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="totalAmount" className="block text-sm font-medium text-gray-700 mb-2">
-                  Total Budget (USDC)
+                  Total Budget (USDC) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -201,7 +218,7 @@ const CreateJob = () => {
 
               <div>
                 <label htmlFor="deadline" className="block text-sm font-medium text-gray-700 mb-2">
-                  Project Deadline
+                  Project Deadline <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
@@ -249,7 +266,7 @@ const CreateJob = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Milestone Title
+                      Milestone Title <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -263,7 +280,7 @@ const CreateJob = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
+                      Description <span className="text-red-500">*</span>
                     </label>
                     <textarea
                       value={milestone.description}
@@ -278,7 +295,7 @@ const CreateJob = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Amount (USDC)
+                        Amount (USDC) <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -292,7 +309,7 @@ const CreateJob = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Deadline
+                        Deadline <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="date"
@@ -319,10 +336,10 @@ const CreateJob = () => {
         <div className="card">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Escrow & Security</h2>
           <div className="space-y-3 text-sm text-gray-600">
-            <p>✓ Funds will be locked in a smart contract</p>
-            <p>✓ Released to freelancer upon your milestone approval</p>
-            <p>✓ Disputes can be raised if work doesn't meet expectations</p>
-            <p>✓ You maintain full control until approval</p>
+            <p className="flex items-start gap-2"><CheckCircleIcon /><span>Funds will be locked in a smart contract</span></p>
+            <p className="flex items-start gap-2"><CheckCircleIcon /><span>Released to freelancer upon your milestone approval</span></p>
+            <p className="flex items-start gap-2"><CheckCircleIcon /><span>Disputes can be raised if work doesn't meet expectations</span></p>
+            <p className="flex items-start gap-2"><CheckCircleIcon /><span>You maintain full control until approval</span></p>
           </div>
         </div>
 

@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import JobCard from '../components/JobCard';
 import { useWallet } from '../hooks/useWallet';
 import { USER_ROLES } from '../constants/contracts';
+import {
+  ensureSepoliaNetwork,
+  getWalletReputation,
+  loadEscrowMilestones,
+  TX_CONFIRMED_EVENT,
+} from '../utils/contracts';
 
 const ROLE_BROWSE_COPY = {
   [USER_ROLES.CLIENT]: 'Track market rates, compare portfolios, and benchmark your open jobs.',
@@ -9,62 +15,119 @@ const ROLE_BROWSE_COPY = {
   [USER_ROLES.ARBITRATOR]: 'Monitor active jobs so you can make faster, context-aware arbitration decisions.',
 };
 
+const ESCROW_STATE_TO_STATUS = {
+  0: 'open',
+  1: 'in_progress',
+  2: 'in_progress',
+  3: 'review',
+  4: 'completed',
+  5: 'disputed',
+  6: 'resolved',
+};
+
+const EMPTY_HASH = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
 const BrowseJobs = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTier, setFilterTier] = useState('all');
-  const { userRole, roleSource } = useWallet();
+  const { userRole, roleSource, provider, account } = useWallet();
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
-  // Mock data - replace with actual API calls
-  const jobs = [
-    {
-      id: 1,
-      title: 'UI Design for SaaS Dashboard',
-      description: 'Create a modern dashboard UI with dark mode support',
-      amount: 1500,
-      milestones: 3,
-      status: 'open',
-      clientTier: 'GOLD',
-      skills: ['Figma', 'UI Design', 'Prototyping'],
-    },
-    {
-      id: 2,
-      title: 'Smart Contract Audit',
-      description: 'Audit our ERC-20 token contract for security vulnerabilities',
-      amount: 3000,
-      milestones: 2,
-      status: 'open',
-      clientTier: 'SILVER',
-      skills: ['Solidity', 'Security', 'Testing'],
-    },
-    {
-      id: 3,
-      title: 'React Component Library',
-      description: 'Build reusable React components with Tailwind CSS',
-      amount: 2500,
-      milestones: 4,
-      status: 'open',
-      clientTier: 'BRONZE',
-      skills: ['React', 'Tailwind', 'Storybook'],
-    },
-    {
-      id: 4,
-      title: 'API Integration Service',
-      description: 'Integrate third-party payment APIs into our platform',
-      amount: 1200,
-      milestones: 2,
-      status: 'open',
-      clientTier: 'NEW',
-      skills: ['Node.js', 'APIs', 'Integration'],
-    },
-  ];
+  const loadJobs = useCallback(async () => {
+    if (!provider) {
+      return;
+    }
 
-  const filteredJobs = jobs.filter((job) => {
+    try {
+      setLoading(true);
+      setLoadError('');
+
+      await ensureSepoliaNetwork(provider);
+      const milestoneRows = await loadEscrowMilestones(provider);
+      const count = milestoneRows.length;
+
+      if (count === 0) {
+        setJobs([]);
+        return;
+      }
+
+      const clientAddresses = [...new Set(milestoneRows.map(({ milestone }) => milestone.client.toLowerCase()))];
+      const tierByClient = new Map();
+
+      await Promise.all(
+        clientAddresses.map(async (client) => {
+          try {
+            const reputation = await getWalletReputation(provider, client);
+            tierByClient.set(client, reputation.tierKey);
+          } catch {
+            tierByClient.set(client, 'NEW');
+          }
+        })
+      );
+
+      const nextJobs = milestoneRows
+        .map(({ id, milestone, meta }) => {
+          const amount = (Number(milestone.amountUSD) / 1e8).toFixed(2);
+          const isUnsubmitted = milestone.deliverableHash === EMPTY_HASH;
+          const shortClient = `${milestone.client.slice(0, 6)}...${milestone.client.slice(-4)}`;
+          const shortFreelancer = `${milestone.freelancer.slice(0, 6)}...${milestone.freelancer.slice(-4)}`;
+          const title = meta
+            ? `Milestone #${id} · ${shortClient} -> ${shortFreelancer}`
+            : `Escrow Milestone #${id}`;
+          return {
+            id,
+            title,
+            description: isUnsubmitted
+              ? `Created on-chain for ${amount} USD. Deliverable not submitted yet.`
+              : `Deliverable hash submitted: ${milestone.deliverableHash}`,
+            amount,
+            milestones: 1,
+            status: ESCROW_STATE_TO_STATUS[Number(milestone.state)] || 'open',
+            clientTier: tierByClient.get(milestone.client.toLowerCase()) || 'NEW',
+            client: milestone.client,
+            freelancer: milestone.freelancer,
+          };
+        })
+        .filter((job) => {
+          if (userRole === USER_ROLES.CLIENT && account) {
+            return job.client.toLowerCase() === account.toLowerCase();
+          }
+          if (userRole === USER_ROLES.FREELANCER && account) {
+            return job.freelancer.toLowerCase() === account.toLowerCase();
+          }
+          return true;
+        });
+
+      setJobs(nextJobs);
+    } catch (error) {
+      setLoadError(error?.shortMessage || error?.message || 'Unable to load jobs from chain.');
+    } finally {
+      setLoading(false);
+    }
+  }, [provider, userRole, account]);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
+  useEffect(() => {
+    const refresh = () => {
+      loadJobs();
+    };
+
+    window.addEventListener(TX_CONFIRMED_EVENT, refresh);
+    return () => window.removeEventListener(TX_CONFIRMED_EVENT, refresh);
+  }, [loadJobs]);
+
+  const filteredJobs = useMemo(() => jobs.filter((job) => {
     const matchesSearch =
       job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTier = filterTier === 'all' || job.clientTier === filterTier;
     return matchesSearch && matchesTier;
-  });
+  }), [jobs, searchTerm, filterTier]);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
@@ -104,6 +167,14 @@ const BrowseJobs = () => {
           </div>
         </div>
       </div>
+
+      {loading && (
+        <div className="card mb-8 text-sm text-gray-700">Loading jobs from EscrowContract...</div>
+      )}
+
+      {loadError && (
+        <div className="card mb-8 border border-red-200 bg-red-50 text-sm text-red-700">{loadError}</div>
+      )}
 
       {filteredJobs.length === 0 ? (
         <div className="text-center py-12">
