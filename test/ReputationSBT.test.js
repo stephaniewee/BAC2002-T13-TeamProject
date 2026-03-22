@@ -146,6 +146,66 @@ describe("ReputationSBT", function () {
       expect(await reputationSBT.getTier(freelancer.address)).to.equal(3);
     });
   });
+  
+  // ── Dispute Freeze ───────────────────────────────────────────────────
+  describe("Dispute Freeze", function () {
+    it("should not be frozen by default", async function () {
+      expect(await reputationSBT.isFrozen(freelancer.address)).to.be.false;
+    });
+
+    it("should allow escrow to freeze a wallet", async function () {
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, true);
+      expect(await reputationSBT.isFrozen(freelancer.address)).to.be.true;
+    });
+
+    it("should allow escrow to unfreeze a wallet", async function () {
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, true);
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, false);
+      expect(await reputationSBT.isFrozen(freelancer.address)).to.be.false;
+    });
+
+    it("should revert getTier when wallet is frozen", async function () {
+      await reputationSBT.connect(escrow).updateReputation(freelancer.address, true);
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, true);
+
+      await expect(
+        reputationSBT.getTier(freelancer.address)
+      ).to.be.revertedWith("Reputation frozen: active dispute");
+    });
+
+    it("should allow getTier again after unfreeze", async function () {
+      await reputationSBT.connect(escrow).updateReputation(freelancer.address, true);
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, true);
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, false);
+
+      expect(await reputationSBT.getTier(freelancer.address)).to.equal(1);
+    });
+
+    it("should revert if non-escrow calls setFrozen", async function () {
+      await expect(
+        reputationSBT.connect(stranger).setFrozen(freelancer.address, true)
+      ).to.be.reverted;
+    });
+
+    it("should emit ReputationFrozen event", async function () {
+      await expect(
+        reputationSBT.connect(escrow).setFrozen(freelancer.address, true)
+      ).to.emit(reputationSBT, "ReputationFrozen")
+      .withArgs(freelancer.address, true);
+    });
+
+    it("should still return getReputation when frozen", async function () {
+      await reputationSBT.connect(escrow).updateReputation(freelancer.address, true);
+      await reputationSBT.connect(escrow).setFrozen(freelancer.address, true);
+
+      // getReputation bypasses notFrozen — must not revert
+      const [jobsCompleted, , , , , tier] =
+        await reputationSBT.getReputation(freelancer.address);
+
+      expect(jobsCompleted).to.equal(1);
+      expect(tier).to.equal(1);
+    });
+  });
 
   // ── Soulbound (Non-transferable) ─────────────────────────────────────
   describe("Soulbound — Non-transferable", function () {
