@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { MILESTONE_STATUS, USER_ROLES } from '../constants/contracts';
 
 const StatusIcon = ({ status }) => {
@@ -100,6 +101,16 @@ const MilestoneCard = ({
   };
 
   const colors = getStatusColor(milestone.status);
+  const canSubmitWork =
+    userRole === USER_ROLES.FREELANCER
+    && milestone.status === MILESTONE_STATUS.PENDING
+    && (milestone.stateValue === 1 || milestone.stateValue === 2);
+
+  const isWaitingForFunding =
+    userRole === USER_ROLES.FREELANCER
+    && milestone.status === MILESTONE_STATUS.PENDING
+    && milestone.stateValue === 0;
+
   return (
     <div className="card">
       <div className="flex justify-between items-start mb-3">
@@ -130,7 +141,7 @@ const MilestoneCard = ({
         </div>
       </div>
 
-      {milestone.status === MILESTONE_STATUS.PENDING && userRole === USER_ROLES.FREELANCER && (
+      {canSubmitWork && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
           <input
             type="text"
@@ -147,6 +158,14 @@ const MilestoneCard = ({
           >
             {txState.loading ? 'Submitting...' : 'Submit Work'}
           </button>
+        </div>
+      )}
+
+      {isWaitingForFunding && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <p className="text-sm text-amber-700">
+            Waiting for client funding before you can submit deliverables.
+          </p>
         </div>
       )}
 
@@ -171,7 +190,9 @@ const MilestoneCard = ({
 
       {milestone.status === MILESTONE_STATUS.DISPUTED && userRole === USER_ROLES.ARBITRATOR && (
         <div className="mt-4 pt-4 border-t border-gray-200 flex gap-2">
-          <button className="flex-1 btn-primary text-sm py-2">Open Arbitration</button>
+          <Link to="/disputes" className="flex-1">
+            <button className="w-full btn-primary text-sm py-2">Open Arbitration</button>
+          </Link>
         </div>
       )}
 

@@ -69,6 +69,13 @@ const toActivityBorder = (stateValue) => {
   return 'border-l-blue-500';
 };
 
+const toTitleCase = (value) => {
+  if (!value) return 'New';
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+};
+
+const formatTierDisplay = (tierKey, tierIndex) => `${toTitleCase(tierKey)} · Lv.${Number.isFinite(Number(tierIndex)) ? Number(tierIndex) : 0}`;
+
 const HeroFeatureIcon = ({ type }) => {
   if (type === 'escrow') {
     return (
@@ -170,7 +177,7 @@ const Home = () => {
           { label: 'Active Jobs', value: String(active), accent: 'text-gray-900' },
           { label: 'Pending Submissions', value: String(pendingSubmission), accent: 'text-yellow-600' },
           { label: 'Settled Value', value: `${sumUsd(settled).toFixed(2)} USD`, accent: 'text-green-600' },
-          { label: 'Reputation Tier', value: `${rep.tierKey} ★`, accent: 'text-yellow-600' },
+          { label: 'Reputation Tier', value: formatTierDisplay(rep.tierKey, rep.tierIndex), accent: 'text-yellow-600' },
         ]);
 
         setActivity(
@@ -310,7 +317,7 @@ const Home = () => {
         { label: 'Active Jobs', value: '0', accent: 'text-gray-500' },
         { label: 'Pending Submissions', value: '0', accent: 'text-gray-500' },
         { label: 'Settled Value', value: '0.00 USD', accent: 'text-gray-500' },
-        { label: 'Reputation Tier', value: 'NEW ★', accent: 'text-gray-500' },
+        { label: 'Reputation Tier', value: 'New · Lv.0', accent: 'text-gray-500' },
       ];
     }
 
@@ -434,7 +441,8 @@ const Home = () => {
         </div>
 
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Quick Actions</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Quick Actions for {roleLabel}</h2>
+          <p className="text-sm text-gray-600 mb-6">Actions are role-based and adapt to your current role selection.</p>
           <div className="flex flex-col gap-6">
             {dashboard.actions.map((action) => (
               <Link key={action.label} to={action.to} className="block">

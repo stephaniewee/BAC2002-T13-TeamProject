@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 import { emitTxConfirmedEvent, ensureSepoliaNetwork, getEscrowWriteContract } from '../utils/contracts';
@@ -32,8 +32,11 @@ const resolveCreateFlowStep = (status) => {
   return 0;
 };
 
+const getDraftStorageKey = (account) => `freelancechain:create-job-draft:${(account || 'unknown').toLowerCase()}`;
+
 const CreateJob = () => {
-  const { isConnected, connectWallet, userRole, provider, signer } = useWallet();
+  const { isConnected, connectWallet, userRole, provider, signer, account } = useWallet();
+  const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
     freelancer: '',
     title: '',
@@ -46,7 +49,63 @@ const CreateJob = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitState, setSubmitState] = useState({ status: '', error: '', milestoneId: null, createTxHash: '', fundTxHash: '' });
+  const [draftNotice, setDraftNotice] = useState({ type: '', message: '' });
+  const progressPanelRef = useRef(null);
   const currentFlowStep = resolveCreateFlowStep(submitState.status);
+  const showProgressPanel = Boolean(isSubmitting || submitState.status || submitState.error);
+
+  const scrollToProgress = () => {
+    if (!progressPanelRef.current) {
+      return;
+    }
+
+    progressPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  useEffect(() => {
+    if (!account) {
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(getDraftStorageKey(account));
+      if (!saved) {
+        return;
+      }
+
+      const parsed = JSON.parse(saved);
+      if (parsed?.formData) {
+        setFormData(parsed.formData);
+        setDraftNotice({ type: 'info', message: 'Loaded your saved draft for this wallet.' });
+      }
+    } catch {
+      setDraftNotice({ type: 'error', message: 'Could not load saved draft data.' });
+    }
+  }, [account]);
+
+  useEffect(() => {
+    if (isSubmitting) {
+      scrollToProgress();
+    }
+  }, [isSubmitting]);
+
+  const handleSaveDraft = () => {
+    if (!account) {
+      setDraftNotice({ type: 'error', message: 'Connect wallet first to save a draft.' });
+      return;
+    }
+
+    try {
+      const payload = {
+        savedAt: Date.now(),
+        formData,
+      };
+      localStorage.setItem(getDraftStorageKey(account), JSON.stringify(payload));
+      setDraftNotice({ type: 'success', message: 'Draft saved locally in this browser.' });
+    } catch {
+      setDraftNotice({ type: 'error', message: 'Failed to save draft locally.' });
+    }
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -81,6 +140,12 @@ const CreateJob = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Prevent duplicate on-chain posting from rapid double-click/enter submits.
+    if (submitLockRef.current) {
+      return;
+    }
+    submitLockRef.current = true;
 
     try {
       if (!provider || !signer) {
@@ -129,6 +194,11 @@ const CreateJob = () => {
         fundTxHash: fundTx.hash,
       });
 
+      if (account) {
+        localStorage.removeItem(getDraftStorageKey(account));
+      }
+      setDraftNotice({ type: 'success', message: 'Draft cleared after successful on-chain posting.' });
+
       setSubmitState({ status: 'Milestone created and funded successfully.', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: fundTx.hash });
     } catch (error) {
       setSubmitState((prev) => ({
@@ -138,6 +208,7 @@ const CreateJob = () => {
       }));
     } finally {
       setIsSubmitting(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -165,8 +236,8 @@ const CreateJob = () => {
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Post a New Job</h1>
       <p className="text-gray-600 mb-8">Create a job with multiple milestones and fund your escrow</p>
 
-      {(isSubmitting || submitState.status || submitState.error) && (
-        <div className="card mb-8">
+      {showProgressPanel && (
+        <div ref={progressPanelRef} className="card mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-900">Transaction Progress</h2>
             <span className="text-xs text-gray-600">
@@ -190,6 +261,50 @@ const CreateJob = () => {
               );
             })}
           </div>
+
+          {(submitState.status || submitState.error || submitState.milestoneId !== null || submitState.createTxHash || submitState.fundTxHash) && (
+            <div className={`mt-4 p-3 rounded-lg border ${submitState.error ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
+              {submitState.status && <p className="text-sm font-medium text-gray-900 mb-1">{submitState.status}</p>}
+              {submitState.milestoneId !== null && (
+                <p className="text-xs text-gray-700 mb-1">Milestone ID: {submitState.milestoneId}</p>
+              )}
+              {submitState.createTxHash && (
+                <p className="text-xs text-gray-700 break-all mb-1">
+                  Create tx: {submitState.createTxHash}{' '}
+                  <a
+                    href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${submitState.createTxHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    View
+                  </a>
+                </p>
+              )}
+              {submitState.fundTxHash && (
+                <p className="text-xs text-gray-700 break-all mb-1">
+                  Fund tx: {submitState.fundTxHash}{' '}
+                  <a
+                    href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${submitState.fundTxHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    View
+                  </a>
+                </p>
+              )}
+              {submitState.error && <p className="text-sm text-red-700">{submitState.error}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {draftNotice.message && (
+        <div className={`card mb-8 ${draftNotice.type === 'error' ? 'border border-red-200 bg-red-50' : draftNotice.type === 'success' ? 'border border-green-200 bg-green-50' : 'border border-blue-200 bg-blue-50'}`}>
+          <p className={`text-sm ${draftNotice.type === 'error' ? 'text-red-700' : draftNotice.type === 'success' ? 'text-green-700' : 'text-blue-700'}`}>
+            {draftNotice.message}
+          </p>
         </div>
       )}
 
@@ -391,43 +506,19 @@ const CreateJob = () => {
           </div>
         </div>
 
-        {(submitState.status || submitState.error) && (
-          <div className={`card ${submitState.error ? 'border border-red-200 bg-red-50' : 'border border-green-200 bg-green-50'}`}>
-            {submitState.status && <p className="text-sm font-medium text-gray-900 mb-2">{submitState.status}</p>}
-            {submitState.milestoneId !== null && (
-              <p className="text-xs text-gray-600 mb-1">Milestone ID: {submitState.milestoneId}</p>
-            )}
-            {submitState.createTxHash && (
-              <p className="text-xs text-gray-600 break-all mb-1">
-                Create tx: {submitState.createTxHash}{' '}
-                <a
-                  href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${submitState.createTxHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                >
-                  View
-                </a>
-              </p>
-            )}
-            {submitState.fundTxHash && (
-              <p className="text-xs text-gray-600 break-all">
-                Fund tx: {submitState.fundTxHash}{' '}
-                <a
-                  href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${submitState.fundTxHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                >
-                  View
-                </a>
-              </p>
-            )}
-            {submitState.error && <p className="text-sm text-red-700">{submitState.error}</p>}
+        {/* Submit */}
+        {showProgressPanel && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={scrollToProgress}
+              className="text-sm text-blue-700 hover:text-blue-800 underline"
+            >
+              Back to Progress
+            </button>
           </div>
         )}
 
-        {/* Submit */}
         <div className="flex gap-4">
           <button
             type="submit"
@@ -438,9 +529,11 @@ const CreateJob = () => {
           </button>
           <button
             type="button"
+            onClick={handleSaveDraft}
+            disabled={isSubmitting}
             className="flex-1 btn-secondary py-3 rounded-lg font-semibold"
           >
-            Save Draft
+            {isSubmitting ? 'Saving Disabled While Posting' : 'Save Draft'}
           </button>
         </div>
       </form>

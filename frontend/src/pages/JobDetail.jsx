@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import MilestoneCard from '../components/MilestoneCard';
 import ReputationBadge from '../components/ReputationBadge';
 import { useWallet } from '../hooks/useWallet';
@@ -16,17 +16,23 @@ import {
 const ROLE_ACTIONS = {
   [USER_ROLES.CLIENT]: {
     primary: 'Manage Escrow Milestones',
-    secondary: 'Edit Job Terms',
+    primaryTo: '/my-jobs',
+    secondary: 'Create Another Job',
+    secondaryTo: '/create-job',
     helper: 'Client mode: review submissions and approve milestone payouts.',
   },
   [USER_ROLES.FREELANCER]: {
-    primary: 'Apply to This Job',
-    secondary: 'Save for Later',
+    primary: 'Browse More Jobs',
+    primaryTo: '/browse',
+    secondary: 'View My Jobs',
+    secondaryTo: '/my-jobs',
     helper: 'Freelancer mode: submit milestones and track release timelines.',
   },
   [USER_ROLES.ARBITRATOR]: {
     primary: 'Open Dispute Context',
-    secondary: 'Watch Job',
+    primaryTo: '/disputes',
+    secondary: 'Watch Queue',
+    secondaryTo: '/my-jobs',
     helper: 'Arbitrator mode: monitor delivery context for possible dispute review.',
   },
 };
@@ -41,12 +47,16 @@ const ESCROW_STATE_TO_UI = {
   6: 'resolved', // RESOLVED
 };
 
-const MILESTONE_TIMELINE_STEPS = [
+const CORE_TIMELINE_STEPS = [
   { value: 0, label: 'Created', shortLabel: 'C' },
   { value: 1, label: 'Funded', shortLabel: 'F' },
   { value: 2, label: 'In Progress', shortLabel: 'IP' },
   { value: 3, label: 'Submitted', shortLabel: 'S' },
-  { value: 4, label: 'Completed', shortLabel: 'OK' },
+];
+
+const NORMAL_FINAL_STEP = { value: 4, label: 'Completed', shortLabel: 'OK' };
+
+const DISPUTE_PATH_STEPS = [
   { value: 5, label: 'Disputed', shortLabel: 'D' },
   { value: 6, label: 'Resolved', shortLabel: 'R' },
 ];
@@ -88,6 +98,38 @@ const getStepChipClassName = (stepType) => {
 };
 
 const getConnectorClassName = (isComplete) => (isComplete ? 'bg-blue-500' : 'bg-gray-200');
+
+const getBranchStepType = (currentState, stepValue, path) => {
+  if (path === 'normal') {
+    if (currentState >= 5) return 'skipped';
+    if (currentState === stepValue) return 'current';
+    if (currentState > stepValue) return 'completed';
+    return 'upcoming';
+  }
+
+  // dispute path
+  if (currentState === 4) return 'skipped';
+  if (currentState === stepValue) return 'current';
+  if (currentState > stepValue) return 'completed';
+  return 'upcoming';
+};
+
+const getBranchChipClassName = (stepType) => {
+  if (stepType === 'skipped') return 'bg-gray-50 text-gray-400 border-gray-300 border-dashed';
+  return getStepChipClassName(stepType);
+};
+
+const getBranchTextClassName = (stepType) => {
+  if (stepType === 'upcoming') return 'text-gray-500';
+  if (stepType === 'skipped') return 'text-gray-400';
+  return 'text-gray-900 font-medium';
+};
+
+const getBranchConnectorClassName = (leftType) => {
+  if (leftType === 'completed' || leftType === 'current') return 'bg-blue-500';
+  if (leftType === 'skipped') return 'bg-gray-300';
+  return 'bg-gray-200';
+};
 
 const isBytes32 = (value) => /^0x[0-9a-fA-F]{64}$/.test(value || '');
 
@@ -203,16 +245,31 @@ const JobDetail = () => {
       return;
     }
 
+    if (!milestone || ![1, 2].includes(Number(milestone.stateValue))) {
+      setTxState({ loading: false, message: '', error: 'Milestone is not in a submittable state. It must be funded first.', txHash: '' });
+      return;
+    }
+
     const escrow = getEscrowWriteContract(signer);
     await runWriteTx('Submitting milestone deliverable...', () => escrow.submitWork(targetMilestoneId, deliverableHash));
   };
 
   const handleApprove = async (targetMilestoneId) => {
+    if (!milestone || Number(milestone.stateValue) !== 3) {
+      setTxState({ loading: false, message: '', error: 'Milestone is not pending review, so approval is not available.', txHash: '' });
+      return;
+    }
+
     const escrow = getEscrowWriteContract(signer);
     await runWriteTx('Approving milestone and releasing funds...', () => escrow.approveMilestone(targetMilestoneId));
   };
 
   const handleDispute = async (targetMilestoneId) => {
+    if (!milestone || Number(milestone.stateValue) !== 3) {
+      setTxState({ loading: false, message: '', error: 'Dispute can only be raised while milestone is pending review.', txHash: '' });
+      return;
+    }
+
     const escrow = getEscrowWriteContract(signer);
     await runWriteTx('Raising dispute for this milestone...', () => escrow.raiseDispute(targetMilestoneId));
   };
@@ -361,13 +418,13 @@ const JobDetail = () => {
       <div className="card mb-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Milestone Timeline</h2>
         <p className="text-sm text-gray-700 mb-6">
-          Live on-chain progression for this escrow milestone.
+          Live on-chain progression with branch paths after submission.
         </p>
 
         <div className="overflow-x-auto pb-2">
           <div className="min-w-[760px]">
             <div className="flex items-center">
-              {MILESTONE_TIMELINE_STEPS.map((step, index) => {
+              {CORE_TIMELINE_STEPS.map((step, index) => {
                 const stepType = getTimelineStepType(milestone.stateValue, step.value);
                 const isConnectorComplete = milestone.stateValue > step.value;
 
@@ -376,7 +433,7 @@ const JobDetail = () => {
                     <div className={`h-10 w-10 rounded-full border-2 flex items-center justify-center text-xs font-bold ${getStepChipClassName(stepType)}`}>
                       {step.shortLabel}
                     </div>
-                    {index < MILESTONE_TIMELINE_STEPS.length - 1 && (
+                    {index < CORE_TIMELINE_STEPS.length - 1 && (
                       <div className={`h-1 flex-1 mx-2 rounded ${getConnectorClassName(isConnectorComplete)}`} />
                     )}
                   </React.Fragment>
@@ -384,8 +441,8 @@ const JobDetail = () => {
               })}
             </div>
 
-            <div className="mt-3 grid grid-cols-7 gap-2 text-xs text-center">
-              {MILESTONE_TIMELINE_STEPS.map((step) => {
+            <div className="mt-3 grid grid-cols-4 gap-2 text-xs text-center">
+              {CORE_TIMELINE_STEPS.map((step) => {
                 const stepType = getTimelineStepType(milestone.stateValue, step.value);
                 return (
                   <div
@@ -396,6 +453,55 @@ const JobDetail = () => {
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-gray-200 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Standard Path</p>
+                {(() => {
+                  const stepType = getBranchStepType(milestone.stateValue, NORMAL_FINAL_STEP.value, 'normal');
+                  return (
+                    <>
+                      <div className={`h-10 w-10 rounded-full border-2 flex items-center justify-center text-xs font-bold ${getBranchChipClassName(stepType)}`}>
+                        {NORMAL_FINAL_STEP.shortLabel}
+                      </div>
+                      <p className={`text-xs mt-2 ${getBranchTextClassName(stepType)}`}>{NORMAL_FINAL_STEP.label}</p>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500 mb-3">Dispute Path</p>
+                <div className="flex items-center">
+                  {DISPUTE_PATH_STEPS.map((step, index) => {
+                    const stepType = getBranchStepType(milestone.stateValue, step.value, 'dispute');
+                    const nextType = DISPUTE_PATH_STEPS[index + 1]
+                      ? getBranchStepType(milestone.stateValue, DISPUTE_PATH_STEPS[index + 1].value, 'dispute')
+                      : null;
+                    return (
+                      <React.Fragment key={step.value}>
+                        <div className={`h-10 w-10 rounded-full border-2 flex items-center justify-center text-xs font-bold ${getBranchChipClassName(stepType)}`}>
+                          {step.shortLabel}
+                        </div>
+                        {nextType !== null && (
+                          <div className={`h-1 flex-1 mx-2 rounded ${getBranchConnectorClassName(stepType)}`} />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-center">
+                  {DISPUTE_PATH_STEPS.map((step) => {
+                    const stepType = getBranchStepType(milestone.stateValue, step.value, 'dispute');
+                    return (
+                      <div key={step.value} className={getBranchTextClassName(stepType)}>
+                        {step.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -448,12 +554,16 @@ const JobDetail = () => {
 
       {/* Action Buttons */}
       <div className="flex gap-4 mb-12">
-        <button className="flex-1 btn-primary py-3 rounded-lg font-semibold">
-          {currentActions.primary}
-        </button>
-        <button className="flex-1 btn-secondary py-3 rounded-lg font-semibold">
-          {currentActions.secondary}
-        </button>
+        <Link to={currentActions.primaryTo || '/my-jobs'} className="flex-1">
+          <button className="w-full btn-primary py-3 rounded-lg font-semibold">
+            {currentActions.primary}
+          </button>
+        </Link>
+        <Link to={currentActions.secondaryTo || '/browse'} className="flex-1">
+          <button className="w-full btn-secondary py-3 rounded-lg font-semibold">
+            {currentActions.secondary}
+          </button>
+        </Link>
       </div>
     </div>
   );

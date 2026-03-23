@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { emitTxConfirmedEvent, ensureSepoliaNetwork, getDisputeReadContract, getDisputeWriteContract, loadEscrowMilestones, TX_CONFIRMED_EVENT } from '../utils/contracts';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
@@ -111,9 +112,11 @@ const DisputeCard = ({
 
       {!isArbitrator && (
         <div className="space-y-2">
-          <button className="w-full btn-primary py-2 rounded-lg font-semibold">
-            View Details
-          </button>
+          <Link to={`/jobs/${dispute.id}`}>
+            <button className="w-full btn-primary py-2 rounded-lg font-semibold">
+              View Details
+            </button>
+          </Link>
         </div>
       )}
     </div>

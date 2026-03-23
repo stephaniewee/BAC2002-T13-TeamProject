@@ -1,17 +1,20 @@
-import React, { createContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useCallback, useEffect, useRef } from 'react';
 import { BrowserProvider } from 'ethers';
 import { USER_ROLES } from '../constants/contracts';
+import { getDisputeReadContract, getEscrowReadContract } from '../utils/contracts';
 
 export const WalletContext = createContext();
 
-const ONCHAIN_ROLE_STORAGE_KEY = 'freelancechain:onChainRole';
+const ONCHAIN_ROLE_STORAGE_KEY_PREFIX = 'freelancechain:onChainRole:';
 const ROLE_OVERRIDE_STORAGE_KEY = 'freelancechain:roleOverride';
 
 const VALID_ROLES = new Set(Object.values(USER_ROLES));
 
 const sanitizeRole = (role) => (VALID_ROLES.has(role) ? role : null);
+const getOnChainRoleStorageKey = (account) => `${ONCHAIN_ROLE_STORAGE_KEY_PREFIX}${String(account || '').toLowerCase()}`;
 
 export const WalletProvider = ({ children }) => {
+  const previousAccountRef = useRef(null);
   const [account, setAccount] = useState(null);
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
@@ -33,10 +36,66 @@ export const WalletProvider = ({ children }) => {
     localStorage.removeItem('walletConnected');
   }, []);
 
-  const resolveOnChainRole = useCallback(async () => {
-    // Placeholder until contract-backed profile read is wired in.
-    const storedRole = localStorage.getItem(ONCHAIN_ROLE_STORAGE_KEY);
-    return sanitizeRole(storedRole) || USER_ROLES.FREELANCER;
+  const resolveOnChainRole = useCallback(async (activeProvider, activeAccount) => {
+    const scopedStorageKey = getOnChainRoleStorageKey(activeAccount);
+    const sanitizedStoredRole = sanitizeRole(localStorage.getItem(scopedStorageKey));
+
+    if (!activeProvider || !activeAccount) {
+      return sanitizedStoredRole || USER_ROLES.FREELANCER;
+    }
+
+    const normalizedAccount = activeAccount.toLowerCase();
+
+    try {
+      const dispute = getDisputeReadContract(activeProvider);
+      const isArbitrator = await dispute.isArbitrator(activeAccount);
+      if (isArbitrator) {
+        localStorage.setItem(scopedStorageKey, USER_ROLES.ARBITRATOR);
+        return USER_ROLES.ARBITRATOR;
+      }
+    } catch {
+      // Ignore and continue with escrow-derived role checks.
+    }
+
+    try {
+      const escrow = getEscrowReadContract(activeProvider);
+      const count = Number(await escrow.milestoneCount());
+      let freelancerMatch = false;
+
+      for (let id = 0; id < count; id += 1) {
+        const milestone = await escrow.milestones(id);
+        const client = String(milestone.client ?? milestone[0] ?? '').toLowerCase();
+        const freelancer = String(milestone.freelancer ?? milestone[1] ?? '').toLowerCase();
+
+        if (client === normalizedAccount) {
+          localStorage.setItem(scopedStorageKey, USER_ROLES.CLIENT);
+          return USER_ROLES.CLIENT;
+        }
+
+        if (freelancer === normalizedAccount) {
+          freelancerMatch = true;
+        }
+      }
+
+      if (freelancerMatch) {
+        localStorage.setItem(scopedStorageKey, USER_ROLES.FREELANCER);
+        return USER_ROLES.FREELANCER;
+      }
+    } catch {
+      // Ignore and continue to fallback/default role.
+    }
+
+    // Never inherit another account role: if no on-chain match for this account,
+    // persist and return freelancer for this account.
+    const fallbackRole = sanitizedStoredRole || USER_ROLES.FREELANCER;
+    localStorage.setItem(scopedStorageKey, fallbackRole);
+    localStorage.removeItem('freelancechain:onChainRole');
+    return fallbackRole;
+  }, []);
+
+  useEffect(() => {
+    // Clean up legacy unscoped role cache keys from older versions.
+    localStorage.removeItem('freelancechain:onChainRole');
   }, []);
 
   const connectWallet = useCallback(async () => {
@@ -54,7 +113,7 @@ export const WalletProvider = ({ children }) => {
 
       const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const resolvedRole = await resolveOnChainRole();
+      const resolvedRole = await resolveOnChainRole(provider, accounts[0]);
 
       setAccount(accounts[0]);
       setProvider(provider);
@@ -91,6 +150,14 @@ export const WalletProvider = ({ children }) => {
   }, [resetWalletState]);
 
   useEffect(() => {
+    const previousAccount = previousAccountRef.current;
+    if (previousAccount && account && previousAccount.toLowerCase() !== account.toLowerCase()) {
+      clearRoleOverride();
+    }
+    previousAccountRef.current = account;
+  }, [account, clearRoleOverride]);
+
+  useEffect(() => {
     if (!window.ethereum) {
       return;
     }
@@ -110,7 +177,7 @@ export const WalletProvider = ({ children }) => {
 
         const nextProvider = new BrowserProvider(window.ethereum);
         const nextSigner = await nextProvider.getSigner();
-        const resolvedRole = await resolveOnChainRole();
+        const resolvedRole = await resolveOnChainRole(nextProvider, accounts[0]);
 
         if (!mounted) {
           return;
