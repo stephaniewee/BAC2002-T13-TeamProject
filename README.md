@@ -9,8 +9,8 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 | Stephanie | React Frontend |
 | Shina | EscrowContract.sol · DisputeResolver.sol |
 | Kai Min | ReputationSBT.sol · Chainlink integration |
-| Nicholas | |
-| Crystal | |
+| Nicholas |  |
+| Crystal |   |
 
 ## Deployed Contracts (Sepolia Testnet)
 
@@ -83,6 +83,7 @@ VITE_ESCROW_ADDRESS=0x...
 VITE_DISPUTE_ADDRESS=0x...
 VITE_PRICEFEED_ADDRESS=0x...
 VITE_SBT_ADDRESS=0x...
+VITE_RPC_URL=${ALCHEMY_SEPOLIA_URL}
 VITE_CHAIN_ID=11155111
 ```
 
@@ -113,6 +114,11 @@ EscrowContract
   ✔ handles dispute and arbitrator resolution
 
 5 passing
+
+ReputationSBT
+  ...
+
+All tests passing
 ```
 
 ---
@@ -162,8 +168,10 @@ npx hardhat verify --network sepolia <DISPUTE_ADDRESS> \
 ## Project Structure
 ```
 contracts/
-  EscrowContract.sol        — Escrow logic, Chainlink USD→ETH, SBT tier
-  DisputeResolver.sol       — Arbitrator role, dispute resolution
+  ChainlinkPriceFeed.sol    — Chainlink ETH/USD feed wrapper
+  EscrowContract.sol        — Escrow logic, USD-denominated milestones
+  DisputeResolver.sol       — Arbitrator role and dispute resolution
+  ReputationSBT.sol         — Non-transferable reputation NFT (SBT)
   interfaces/
     IReputationSBT.sol      — Interface for SBT contract
   mocks/
@@ -172,9 +180,11 @@ contracts/
 scripts/
   deploy.js                 — Deployment script
 test/
-  EscrowContract.test.js    — Full test suite
+  ChainlinkPriceFeed.test.js — Chainlink feed wrapper tests
   DisputeResolver.test.js   — Dispute resolution tests
-frontend/                   — React frontend (Stephanie)
+  EscrowContract.test.js    — Escrow workflow tests
+  ReputationSBT.test.js     — Reputation SBT tests
+frontend/                   — React frontend
 .env.example                — Environment variable template
 hardhat.config.js           — Hardhat configuration
 ```
@@ -185,7 +195,7 @@ hardhat.config.js           — Hardhat configuration
 
 - **EscrowContract** holds ETH in escrow per milestone. Uses Chainlink ETH/USD feed to convert USD milestone values to ETH at funding time. Reads SBT tier to apply slippage buffer.
 - **DisputeResolver** holds the ARBITRATOR_ROLE. Calls `resolveFromDispute()` on Escrow to release or refund funds.
-- **ReputationSBT** (Kai Min) mints a non-transferable ERC-721 token per wallet. Returns tier 0–3 which actively adjusts escrow terms.
+- **ReputationSBT** mints a non-transferable ERC-721 token per wallet. Returns tier 0–3 which actively adjusts escrow terms.
 
 ## Tech Stack
 

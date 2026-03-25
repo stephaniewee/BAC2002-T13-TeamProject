@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { USER_ROLES } from '../constants/contracts';
 import OnchainHealthPanel from '../components/OnchainHealthPanel';
+import ReputationBadge from '../components/ReputationBadge';
 import {
   ensureSepoliaNetwork,
   getDisputeReadContract,
@@ -177,7 +178,12 @@ const Home = () => {
           { label: 'Active Jobs', value: String(active), accent: 'text-gray-900' },
           { label: 'Pending Submissions', value: String(pendingSubmission), accent: 'text-yellow-600' },
           { label: 'Settled Value', value: `${sumUsd(settled).toFixed(2)} USD`, accent: 'text-green-600' },
-          { label: 'Reputation Tier', value: formatTierDisplay(rep.tierKey, rep.tierIndex), accent: 'text-yellow-600' },
+          {
+            label: 'Reputation Tier',
+            value: formatTierDisplay(rep.tierKey, rep.tierIndex),
+            badgeTier: rep.tierKey,
+            accent: 'text-yellow-600',
+          },
         ]);
 
         setActivity(
@@ -317,7 +323,7 @@ const Home = () => {
         { label: 'Active Jobs', value: '0', accent: 'text-gray-500' },
         { label: 'Pending Submissions', value: '0', accent: 'text-gray-500' },
         { label: 'Settled Value', value: '0.00 USD', accent: 'text-gray-500' },
-        { label: 'Reputation Tier', value: 'New · Lv.0', accent: 'text-gray-500' },
+        { label: 'Reputation Tier', value: 'New · Lv.0', badgeTier: 'NEW', accent: 'text-gray-500' },
       ];
     }
 
@@ -413,7 +419,11 @@ const Home = () => {
         {visibleStats.map((stat) => (
           <div key={stat.label} className="card">
             <p className="text-gray-600 text-sm mb-2">{stat.label}</p>
-            <p className={`text-3xl font-bold ${stat.accent}`}>{stat.value}</p>
+            {stat.badgeTier ? (
+              <ReputationBadge tier={stat.badgeTier} />
+            ) : (
+              <p className={`text-3xl font-bold ${stat.accent}`}>{stat.value}</p>
+            )}
           </div>
         ))}
       </div>
