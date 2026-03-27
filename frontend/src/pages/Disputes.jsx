@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { emitTxConfirmedEvent, ensureSepoliaNetwork, getDisputeReadContract, getDisputeWriteContract, loadEscrowMilestones, TX_CONFIRMED_EVENT } from '../utils/contracts';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
@@ -24,6 +24,12 @@ const RESOLVE_FLOW_STEPS = [
   'Submit Resolution',
   'Confirm Transaction',
 ];
+
+const BACK_FALLBACK_BY_ROLE = {
+  [USER_ROLES.CLIENT]: '/my-jobs',
+  [USER_ROLES.FREELANCER]: '/my-jobs',
+  [USER_ROLES.ARBITRATOR]: '/my-jobs',
+};
 
 const formatDisputeStatus = (status) => {
   if (status === 'pending_arbitration') {
@@ -124,6 +130,7 @@ const DisputeCard = ({
 };
 
 const Disputes = () => {
+  const navigate = useNavigate();
   const { userRole, roleSource, provider, signer, account } = useWallet();
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -132,6 +139,15 @@ const Disputes = () => {
   const [splitById, setSplitById] = useState({});
   const [lastResolveTxHash, setLastResolveTxHash] = useState('');
   const [resolveState, setResolveState] = useState({ step: 0, message: '' });
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(BACK_FALLBACK_BY_ROLE[userRole] || '/my-jobs');
+  };
 
   const loadDisputes = useCallback(async () => {
     if (!provider) {
@@ -226,6 +242,14 @@ const Disputes = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-12">
+      <button
+        type="button"
+        onClick={handleBack}
+        className="btn-secondary mb-4"
+      >
+        Back
+      </button>
+
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Disputes</h1>
       <p className="text-gray-600 mb-12">Manage your job disputes and arbitration votes</p>
 

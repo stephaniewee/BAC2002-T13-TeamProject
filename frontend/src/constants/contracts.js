@@ -18,9 +18,9 @@ export const USER_ROLES = {
 // SBT Tiers
 export const SBT_TIERS = {
   NEW: { name: 'New', level: 0, color: '#94A3B8', releaseTime: 7, requiresArbitrator: true },
-  BRONZE: { name: 'Bronze', level: 1, color: '#B45309', releaseTime: 5, requiresArbitrator: true },
-  SILVER: { name: 'Silver', level: 2, color: '#A3E635', releaseTime: 3, requiresArbitrator: false },
-  GOLD: { name: 'Gold', level: 3, color: '#FBBF24', releaseTime: 1, requiresArbitrator: false },
+  ESTABLISHED: { name: 'Established', level: 1, color: '#B45309', releaseTime: 5, requiresArbitrator: true },
+  TRUSTED: { name: 'Trusted', level: 2, color: '#4D7C0F', releaseTime: 3, requiresArbitrator: false },
+  ELITE: { name: 'Elite', level: 3, color: '#CA8A04', releaseTime: 1, requiresArbitrator: false },
 };
 
 // Milestone Status

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import MilestoneCard from '../components/MilestoneCard';
 import ReputationBadge from '../components/ReputationBadge';
 import { useWallet } from '../hooks/useWallet';
@@ -60,6 +60,12 @@ const DISPUTE_PATH_STEPS = [
   { value: 5, label: 'Disputed', shortLabel: 'D' },
   { value: 6, label: 'Resolved', shortLabel: 'R' },
 ];
+
+const BACK_FALLBACK_BY_ROLE = {
+  [USER_ROLES.CLIENT]: '/my-jobs',
+  [USER_ROLES.FREELANCER]: '/my-jobs',
+  [USER_ROLES.ARBITRATOR]: '/disputes',
+};
 
 const formatDate = (unixSeconds) => {
   if (!unixSeconds) return '-';
@@ -135,6 +141,7 @@ const isBytes32 = (value) => /^0x[0-9a-fA-F]{64}$/.test(value || '');
 
 const JobDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { userRole, roleSource, provider, signer } = useWallet();
   const currentActions = ROLE_ACTIONS[userRole] || ROLE_ACTIONS[USER_ROLES.FREELANCER];
   const [milestone, setMilestone] = useState(null);
@@ -147,6 +154,15 @@ const JobDetail = () => {
   const [copyStatus, setCopyStatus] = useState('');
 
   const milestoneId = Number(id);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(BACK_FALLBACK_BY_ROLE[userRole] || '/browse');
+  };
 
   const loadMilestone = useCallback(async () => {
     if (!provider) {
@@ -328,6 +344,14 @@ const JobDetail = () => {
     <div className="max-w-5xl mx-auto px-6 py-12">
       {/* Header */}
       <div className="mb-12">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="btn-secondary mb-4"
+        >
+          Back
+        </button>
+
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-4xl font-bold text-gray-900 mb-2">{job.title}</h1>

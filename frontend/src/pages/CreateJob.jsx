@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 import { emitTxConfirmedEvent, ensureSepoliaNetwork, getEscrowWriteContract } from '../utils/contracts';
@@ -34,17 +35,22 @@ const resolveCreateFlowStep = (status) => {
 
 const getDraftStorageKey = (account) => `freelancechain:create-job-draft:${(account || 'unknown').toLowerCase()}`;
 
+const BACK_FALLBACK_BY_ROLE = {
+  [USER_ROLES.CLIENT]: '/my-jobs',
+  [USER_ROLES.FREELANCER]: '/browse',
+  [USER_ROLES.ARBITRATOR]: '/disputes',
+};
+
 const CreateJob = () => {
+  const navigate = useNavigate();
   const { isConnected, connectWallet, userRole, provider, signer, account } = useWallet();
   const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
     freelancer: '',
-    title: '',
-    description: '',
     totalAmount: '',
     deadline: '',
     milestones: [
-      { title: '', description: '', amount: '', deadline: '' },
+      { amount: '', deadline: '' },
     ],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,6 +59,15 @@ const CreateJob = () => {
   const progressPanelRef = useRef(null);
   const currentFlowStep = resolveCreateFlowStep(submitState.status);
   const showProgressPanel = Boolean(isSubmitting || submitState.status || submitState.error);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(BACK_FALLBACK_BY_ROLE[userRole] || '/my-jobs');
+  };
 
   const scrollToProgress = () => {
     if (!progressPanelRef.current) {
@@ -127,7 +142,7 @@ const CreateJob = () => {
   const addMilestone = () => {
     setFormData(prev => ({
       ...prev,
-      milestones: [...prev.milestones, { title: '', description: '', amount: '', deadline: '' }],
+      milestones: [...prev.milestones, { amount: '', deadline: '' }],
     }));
   };
 
@@ -233,6 +248,14 @@ const CreateJob = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
+      <button
+        type="button"
+        onClick={handleBack}
+        className="btn-secondary mb-4"
+      >
+        Back
+      </button>
+
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Post a New Job</h1>
       <p className="text-gray-600 mb-8">Create a job with multiple milestones and fund your escrow</p>
 
@@ -330,38 +353,6 @@ const CreateJob = () => {
               />
             </div>
 
-            <div>
-              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                Job Title <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                id="title"
-                name="title"
-                value={formData.title}
-                onChange={handleInputChange}
-                placeholder="Enter job title"
-                className="input-base"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Job Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="Describe the project, requirements, and expectations..."
-                className="input-base"
-                rows="6"
-                required
-              />
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="totalAmount" className="block text-sm font-medium text-gray-700 mb-2">
@@ -427,34 +418,6 @@ const CreateJob = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Milestone Title <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={milestone.title}
-                      onChange={(e) => handleMilestoneChange(index, 'title', e.target.value)}
-                      placeholder="e.g., Wireframes & User Flow"
-                      className="input-base"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={milestone.description}
-                      onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
-                      placeholder="What should be delivered?"
-                      className="input-base"
-                      rows="3"
-                      required
-                    />
-                  </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">

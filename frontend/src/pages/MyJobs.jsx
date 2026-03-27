@@ -130,6 +130,7 @@ const MyJobs = () => {
                     let status = 'active';
                     let note = 'Milestone is active on-chain.';
                     let cta = 'Open Job';
+                    let ctaTo = `/jobs/${id}`;
                     let title = `Escrow Milestone #${id}`;
 
                     if (meta) {
@@ -164,9 +165,11 @@ const MyJobs = () => {
                         if (status === 'resolved') {
                             note = 'Dispute already resolved.';
                             cta = 'View Ruling';
+                            ctaTo = '/disputes';
                         } else {
                             note = 'Dispute awaiting arbitrator action.';
                             cta = 'Cast Vote';
+                            ctaTo = '/disputes';
                         }
                     }
 
@@ -177,6 +180,7 @@ const MyJobs = () => {
                         status,
                         note,
                         cta,
+                        ctaTo,
                     };
                 });
 
@@ -267,7 +271,7 @@ const MyJobs = () => {
                                         <p className="text-xs text-gray-500">Amount</p>
                                         <p className="font-bold text-blue-600">{job.value}</p>
                                     </div>
-                                    <Link to={`/jobs/${job.id}`}>
+                                    <Link to={job.ctaTo || `/jobs/${job.id}`}>
                                         <button className="btn-primary px-4 py-2 rounded-lg">{job.cta}</button>
                                     </Link>
                                 </div>

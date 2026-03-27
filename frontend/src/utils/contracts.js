@@ -33,9 +33,9 @@ const CHAINLINK_PRICE_FEED_ABI = [
 
 const TIER_INDEX_TO_KEY = {
     0: 'NEW',
-    1: 'BRONZE',
-    2: 'SILVER',
-    3: 'GOLD',
+    1: 'ESTABLISHED',
+    2: 'TRUSTED',
+    3: 'ELITE',
 };
 
 const requireAddress = (name, address) => {

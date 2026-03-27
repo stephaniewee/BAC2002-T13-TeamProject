@@ -54,6 +54,7 @@ const JobCardSkeleton = () => (
 const BrowseJobs = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTier, setFilterTier] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const { userRole, roleSource, provider, account } = useWallet();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -150,8 +151,9 @@ const BrowseJobs = () => {
       job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTier = filterTier === 'all' || job.clientTier === filterTier;
-    return matchesSearch && matchesTier;
-  }), [jobs, searchTerm, filterTier]);
+    const matchesStatus = filterStatus === 'all' || job.status === filterStatus;
+    return matchesSearch && matchesTier && matchesStatus;
+  }), [jobs, searchTerm, filterTier, filterStatus]);
 
   const emptyState = EMPTY_BROWSE_STATE[userRole] || EMPTY_BROWSE_STATE[USER_ROLES.FREELANCER];
 
@@ -166,7 +168,7 @@ const BrowseJobs = () => {
       </div>
 
       <div className="card mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">Search Jobs</label>
             <input
@@ -186,9 +188,25 @@ const BrowseJobs = () => {
             >
               <option value="all">All Tiers</option>
               <option value="NEW">New</option>
-              <option value="BRONZE">Bronze</option>
-              <option value="SILVER">Silver</option>
-              <option value="GOLD">Gold</option>
+              <option value="ESTABLISHED">Established</option>
+              <option value="TRUSTED">Trusted</option>
+              <option value="ELITE">Elite</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Status</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="input-base"
+            >
+              <option value="all">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="review">Review</option>
+              <option value="completed">Completed</option>
+              <option value="disputed">Disputed</option>
+              <option value="resolved">Resolved</option>
             </select>
           </div>
         </div>

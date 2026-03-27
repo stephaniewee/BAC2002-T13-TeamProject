@@ -47,7 +47,7 @@ npx hardhat test
 - Node.js v18+
 - npm v8+
 - MetaMask browser extension
-- Sepolia testnet ETH (get from https://sepoliafaucet.com)
+- Sepolia testnet ETH (get from https://sepolia-faucet.pk910.de/)
 
 ---
 

@@ -4,7 +4,7 @@ import ReputationBadge from './ReputationBadge';
 import { USER_ROLES } from '../constants/contracts';
 
 const ROLE_ACTION_COPY = {
-  [USER_ROLES.CLIENT]: { primary: 'View Applicants', primaryTo: 'detail', secondary: 'Edit Job', secondaryTo: '/my-jobs' },
+  [USER_ROLES.CLIENT]: { primary: 'View Applicants', primaryTo: 'detail' },
   [USER_ROLES.FREELANCER]: { primary: 'View Details', primaryTo: 'detail', secondary: 'Apply', secondaryTo: 'detail' },
   [USER_ROLES.ARBITRATOR]: { primary: 'Review Brief', primaryTo: 'detail', secondary: 'Watch Job', secondaryTo: 'detail' },
 };
@@ -24,6 +24,11 @@ const JobCard = ({ job, userRole }) => {
     }
     return target || `/jobs/${job.id}`;
   };
+  const primaryRoute = resolveRoute(actionCopy.primaryTo);
+  const hasSecondaryAction = Boolean(actionCopy.secondary && actionCopy.secondaryTo);
+  const secondaryRoute = hasSecondaryAction ? resolveRoute(actionCopy.secondaryTo) : '';
+  const hasDuplicateRoute = hasSecondaryAction && primaryRoute === secondaryRoute;
+  const primaryLabel = hasDuplicateRoute ? 'View Details' : actionCopy.primary;
 
   return (
     <div className="card hover:shadow-md transition-shadow">
@@ -45,16 +50,18 @@ const JobCard = ({ job, userRole }) => {
       </div>
 
       <div className="flex gap-2">
-        <Link to={resolveRoute(actionCopy.primaryTo)} className="flex-1">
+        <Link to={primaryRoute} className="flex-1">
           <button className="w-full btn-primary text-sm py-2">
-            {actionCopy.primary}
+            {primaryLabel}
           </button>
         </Link>
-        <Link to={resolveRoute(actionCopy.secondaryTo)} className="flex-1">
-          <button className="w-full btn-secondary text-sm py-2">
-            {actionCopy.secondary}
-          </button>
-        </Link>
+        {hasSecondaryAction && !hasDuplicateRoute && (
+          <Link to={secondaryRoute} className="flex-1">
+            <button className="w-full btn-secondary text-sm py-2">
+              {actionCopy.secondary}
+            </button>
+          </Link>
+        )}
       </div>
     </div>
   );

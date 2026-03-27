@@ -15,9 +15,9 @@ module.exports = {
         danger: "#EF4444",
         neutral: "#6B7280",
         "tier-new": "#94A3B8",
-        "tier-bronze": "#B45309",
-        "tier-silver": "#A3E635",
-        "tier-gold": "#FBBF24",
+        "tier-established": "#B45309",
+        "tier-trusted": "#4D7C0F",
+        "tier-elite": "#CA8A04",
       },
       fontSize: {
         "heading-1": "32px",
