@@ -131,7 +131,7 @@ const DisputeCard = ({
 
 const Disputes = () => {
   const navigate = useNavigate();
-  const { userRole, roleSource, provider, signer, account } = useWallet();
+  const { userRole, provider, signer, account } = useWallet();
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -252,12 +252,6 @@ const Disputes = () => {
 
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Disputes</h1>
       <p className="text-gray-600 mb-12">Manage your job disputes and arbitration votes</p>
-
-      {roleSource === 'override' && (
-        <div className="mb-6 p-4 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-700">
-          Role override is active. Actions shown here follow your selected testing role.
-        </div>
-      )}
 
       {loading && (
         <div className="mb-6 p-4 rounded-lg border border-gray-200 bg-white text-sm text-gray-700">

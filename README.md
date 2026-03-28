@@ -9,8 +9,8 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 | Stephanie | React Frontend |
 | Shina | EscrowContract.sol · DisputeResolver.sol |
 | Kai Min | ReputationSBT.sol · Chainlink integration |
-| Nicholas |  |
-| Crystal |   |
+| Nicholas | Report Writing |
+| Crystal | Project Demo |
 
 ## Deployed Contracts (Sepolia Testnet)
 
@@ -18,7 +18,7 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 |----------|---------|-----------|
 | EscrowContract | `0x57006E4CCf82bBB7Fe8486dbdfA673c3B38211FD` | [View](https://sepolia.etherscan.io/address/0x57006E4CCf82bBB7Fe8486dbdfA673c3B38211FD#code) |
 | DisputeResolver | `0xBC849c92bBC6f2978106E7bf317fbcF5e76faC09` | [View](https://sepolia.etherscan.io/address/0xBC849c92bBC6f2978106E7bf317fbcF5e76faC09#code) |
-| MockReputationSBT | `0x9c9F204B8FfC8DcA83F24Dc48670fF5B4DA673F7` | [View](https://sepolia.etherscan.io/address/0x9c9F204B8FfC8DcA83F24Dc48670fF5B4DA673F7#code) |
+| ReputationSBT | `0x` | [View]() |
 | Chainlink ETH/USD | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | Sepolia feed |
 
 ---
@@ -83,12 +83,15 @@ VITE_ESCROW_ADDRESS=0x...
 VITE_DISPUTE_ADDRESS=0x...
 VITE_PRICEFEED_ADDRESS=0x...
 VITE_SBT_ADDRESS=0x...
+VITE_PINATA_JWT=YOUR_PINATA_JWT_TOKEN
+VITE_IPFS_GATEWAY=https://ipfs.io/ipfs/
 VITE_RPC_URL=${ALCHEMY_SEPOLIA_URL}
 VITE_CHAIN_ID=11155111
 ```
 
 > Get a free Alchemy API key at https://alchemy.com
 > Get a free Etherscan API key at https://etherscan.io/myapikey
+> Generate a Pinata JWT for IPFS uploads at https://app.pinata.cloud/developers/api-keys
 
 ---
 
@@ -106,20 +109,17 @@ npx hardhat test
 
 Expected output:
 ```
+ChainlinkPriceFeed
+DisputeResolver
 EscrowContract
-  ✔ creates a milestone correctly
-  ✔ funds a milestone with correct ETH amount
-  ✔ reverts if ETH sent is insufficient
-  ✔ completes full lifecycle: create → fund → submit → approve
-  ✔ handles dispute and arbitrator resolution
-
-5 passing
-
 ReputationSBT
-  ...
 
-All tests passing
+  ...individual test cases...
+
+  50 passing
 ```
+
+If your local count differs slightly after future edits, the key success signal is that all suites pass with 0 failing.
 
 ---
 
@@ -194,6 +194,7 @@ hardhat.config.js           — Hardhat configuration
 ## Smart Contract Architecture
 
 - **EscrowContract** holds ETH in escrow per milestone. Uses Chainlink ETH/USD feed to convert USD milestone values to ETH at funding time. Reads SBT tier to apply slippage buffer.
+- **Escrow metadata** stores a `metadataHash` and `metadataCID` per milestone. The frontend uploads job/milestone title + description JSON to IPFS and links it on-chain during milestone creation.
 - **DisputeResolver** holds the ARBITRATOR_ROLE. Calls `resolveFromDispute()` on Escrow to release or refund funds.
 - **ReputationSBT** mints a non-transferable ERC-721 token per wallet. Returns tier 0–3 which actively adjusts escrow terms.
 

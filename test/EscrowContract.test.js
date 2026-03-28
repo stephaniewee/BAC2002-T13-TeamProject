@@ -33,7 +33,7 @@ describe("EscrowContract", function () {
   // ── Helper ───────────────────────────────────────────────────────────
   async function createAndFund(amountUSD = 500e8) {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, amountUSD, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, amountUSD, deadline, ethers.ZeroHash, "");
     const required = await escrow.getRequiredETH(0);
     await escrow.connect(client).fundMilestone(0, { value: required });
     return required;
@@ -42,16 +42,18 @@ describe("EscrowContract", function () {
   // ── Original tests (unchanged) ───────────────────────────────────────
   it("creates a milestone correctly", async function () {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
     const m = await escrow.milestones(0);
     expect(m.client).to.equal(client.address);
     expect(m.freelancer).to.equal(freelancer.address);
     expect(m.amountUSD).to.equal(500e8);
+    expect(m.metadataHash).to.equal(ethers.ZeroHash);
+    expect(m.metadataCID).to.equal("");
   });
 
   it("funds a milestone with correct ETH amount", async function () {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
     const required = await escrow.getRequiredETH(0);
     await escrow.connect(client).fundMilestone(0, { value: required });
     const m = await escrow.milestones(0);
@@ -60,7 +62,7 @@ describe("EscrowContract", function () {
 
   it("reverts if ETH sent is insufficient", async function () {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
     await expect(
       escrow.connect(client).fundMilestone(0, { value: ethers.parseEther("0.0001") })
     ).to.be.revertedWith("Insufficient ETH for USD value");
@@ -68,7 +70,7 @@ describe("EscrowContract", function () {
 
   it("completes full lifecycle: create → fund → submit → approve", async function () {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
     const required = await escrow.getRequiredETH(0);
     await escrow.connect(client).fundMilestone(0, { value: required });
     const ipfsHash = ethers.encodeBytes32String("QmTestHash");
@@ -83,7 +85,7 @@ describe("EscrowContract", function () {
 
   it("handles dispute and arbitrator resolution", async function () {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
     const required = await escrow.getRequiredETH(0);
     await escrow.connect(client).fundMilestone(0, { value: required });
     const ipfsHash = ethers.encodeBytes32String("QmTestHash");
@@ -102,14 +104,14 @@ describe("EscrowContract", function () {
       // MockSBT returns tier 0 by default
       const deadline = Math.floor(Date.now() / 1000) + 86400;
       await expect(
-        escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline)
+        escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "")
       ).to.not.be.reverted;
     });
 
     it("should revert if tier 0 freelancer exceeds $500 cap", async function () {
       const deadline = Math.floor(Date.now() / 1000) + 86400;
       await expect(
-        escrow.connect(client).createMilestone(freelancer.address, 501e8, deadline)
+        escrow.connect(client).createMilestone(freelancer.address, 501e8, deadline, ethers.ZeroHash, "")
       ).to.be.revertedWith("Escrow value exceeds tier cap");
     });
 
@@ -117,7 +119,7 @@ describe("EscrowContract", function () {
       await mockSBT.setTier(freelancer.address, 1);
       const deadline = Math.floor(Date.now() / 1000) + 86400;
       await expect(
-        escrow.connect(client).createMilestone(freelancer.address, 2000e8, deadline)
+        escrow.connect(client).createMilestone(freelancer.address, 2000e8, deadline, ethers.ZeroHash, "")
       ).to.not.be.reverted;
     });
 
@@ -125,7 +127,7 @@ describe("EscrowContract", function () {
       await mockSBT.setTier(freelancer.address, 1);
       const deadline = Math.floor(Date.now() / 1000) + 86400;
       await expect(
-        escrow.connect(client).createMilestone(freelancer.address, 2001e8, deadline)
+        escrow.connect(client).createMilestone(freelancer.address, 2001e8, deadline, ethers.ZeroHash, "")
       ).to.be.revertedWith("Escrow value exceeds tier cap");
     });
 
@@ -133,7 +135,7 @@ describe("EscrowContract", function () {
       await mockSBT.setTier(freelancer.address, 2);
       const deadline = Math.floor(Date.now() / 1000) + 86400;
       await expect(
-        escrow.connect(client).createMilestone(freelancer.address, 10000e8, deadline)
+        escrow.connect(client).createMilestone(freelancer.address, 10000e8, deadline, ethers.ZeroHash, "")
       ).to.not.be.reverted;
     });
 
@@ -141,7 +143,7 @@ describe("EscrowContract", function () {
       await mockSBT.setTier(freelancer.address, 3);
       const deadline = Math.floor(Date.now() / 1000) + 86400;
       await expect(
-        escrow.connect(client).createMilestone(freelancer.address, 50000e8, deadline)
+        escrow.connect(client).createMilestone(freelancer.address, 50000e8, deadline, ethers.ZeroHash, "")
       ).to.not.be.reverted;
     });
   });
@@ -172,7 +174,7 @@ describe("EscrowContract", function () {
       await expect(
         escrow.connect(client).raiseDispute(0)
       ).to.emit(mockSBT, "ReputationFrozen")
-       .withArgs(freelancer.address, true);
+        .withArgs(freelancer.address, true);
     });
   });
 

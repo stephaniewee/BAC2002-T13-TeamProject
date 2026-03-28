@@ -102,7 +102,7 @@ const HeroFeatureIcon = ({ type }) => {
 };
 
 const Home = () => {
-  const { isConnected, connectWallet, userRole, roleSource, provider, account } = useWallet();
+  const { isConnected, connectWallet, userRole, provider, account } = useWallet();
   const [stats, setStats] = useState([]);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -398,7 +398,6 @@ const Home = () => {
         <p className="text-gray-700">{dashboard.subtitle}</p>
         <div className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">
           <span className="font-semibold">Acting as {roleLabel}</span>
-          {roleSource === 'override' && <span>(Override mode)</span>}
         </div>
         {lastSyncedAt && (
           <p className="text-xs text-gray-500 mt-2">
@@ -452,7 +451,7 @@ const Home = () => {
 
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Quick Actions for {roleLabel}</h2>
-          <p className="text-sm text-gray-600 mb-6">Actions are role-based and adapt to your current role selection.</p>
+          <p className="text-sm text-gray-600 mb-6">Actions are role-based and adapt to your connected wallet role.</p>
           <div className="flex flex-col gap-6">
             {dashboard.actions.map((action) => (
               <Link key={action.label} to={action.to} className="block">

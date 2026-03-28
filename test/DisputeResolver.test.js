@@ -37,7 +37,7 @@ describe("DisputeResolver", function () {
   // Returns the locked ETH amount so balance-change assertions can use it.
   async function setupDisputedMilestone() {
     const deadline = Math.floor(Date.now() / 1000) + 86400;
-    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+    await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
     const required = await escrow.getRequiredETH(0);
     await escrow.connect(client).fundMilestone(0, { value: required });
     const ipfsHash = ethers.encodeBytes32String("QmTestHash");
@@ -275,7 +275,7 @@ describe("DisputeResolver", function () {
     it("should revert when milestone is not in DISPUTED state", async function () {
       // Milestone is FUNDED — dispute has not been raised yet
       const deadline = Math.floor(Date.now() / 1000) + 86400;
-      await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+      await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
       const required = await escrow.getRequiredETH(0);
       await escrow.connect(client).fundMilestone(0, { value: required });
 
@@ -295,7 +295,7 @@ describe("DisputeResolver", function () {
     it("should revert when resolving a COMPLETED (non-disputed) milestone", async function () {
       // Full happy-path — milestone ends COMPLETED, not DISPUTED
       const deadline = Math.floor(Date.now() / 1000) + 86400;
-      await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline);
+      await escrow.connect(client).createMilestone(freelancer.address, 500e8, deadline, ethers.ZeroHash, "");
       const required = await escrow.getRequiredETH(0);
       await escrow.connect(client).fundMilestone(0, { value: required });
       const ipfsHash = ethers.encodeBytes32String("QmTestHash");

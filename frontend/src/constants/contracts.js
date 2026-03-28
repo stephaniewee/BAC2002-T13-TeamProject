@@ -3,9 +3,7 @@ export const CONTRACT_ADDRESSES = {
   ESCROW: import.meta.env.VITE_ESCROW_ADDRESS || '0x...',
   DISPUTE_RESOLVER: import.meta.env.VITE_DISPUTE_ADDRESS || '0x...',
   CHAINLINK_PRICE_FEED: import.meta.env.VITE_PRICEFEED_ADDRESS || '0x...',
-  FACTORY: import.meta.env.VITE_FACTORY_ADDRESS || '0x...',
   REPUTATION_SBT: import.meta.env.VITE_SBT_ADDRESS || '0x...',
-  USDC: import.meta.env.VITE_USDC_ADDRESS || '0x...',
 };
 
 // User Roles
@@ -17,10 +15,10 @@ export const USER_ROLES = {
 
 // SBT Tiers
 export const SBT_TIERS = {
-  NEW: { name: 'New', level: 0, color: '#94A3B8', releaseTime: 7, requiresArbitrator: true },
-  ESTABLISHED: { name: 'Established', level: 1, color: '#B45309', releaseTime: 5, requiresArbitrator: true },
-  TRUSTED: { name: 'Trusted', level: 2, color: '#4D7C0F', releaseTime: 3, requiresArbitrator: false },
-  ELITE: { name: 'Elite', level: 3, color: '#CA8A04', releaseTime: 1, requiresArbitrator: false },
+  NEW: { name: 'New', level: 0, color: '#94A3B8' },
+  ESTABLISHED: { name: 'Established', level: 1, color: '#B45309' },
+  TRUSTED: { name: 'Trusted', level: 2, color: '#4D7C0F' },
+  ELITE: { name: 'Elite', level: 3, color: '#CA8A04' },
 };
 
 // Milestone Status

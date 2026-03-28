@@ -74,7 +74,7 @@ const JobRowSkeleton = () => (
 );
 
 const MyJobs = () => {
-    const { userRole, roleSource, provider, account } = useWallet();
+    const { userRole, provider, account } = useWallet();
     const roleData = ROLE_VIEW_BY_ROLE[userRole] || ROLE_VIEW_BY_ROLE[USER_ROLES.FREELANCER];
     const [activeTab, setActiveTab] = useState(roleData.tabs[0]);
     const [jobs, setJobs] = useState([]);
@@ -217,9 +217,6 @@ const MyJobs = () => {
             <div className="mb-10">
                 <h1 className="text-4xl font-bold text-gray-900 mb-2">{roleData.title}</h1>
                 <p className="text-gray-600">{roleData.subtitle}</p>
-                {roleSource === 'override' && (
-                    <p className="text-xs text-blue-600 mt-2">Role override is active for testing.</p>
-                )}
             </div>
 
             <div className="flex flex-wrap gap-3 mb-8">

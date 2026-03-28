@@ -8,6 +8,7 @@ import {
   loadEscrowMilestones,
   TX_CONFIRMED_EVENT,
 } from '../utils/contracts';
+import { fetchMetadataFromCID } from '../utils/ipfs';
 
 const ROLE_BROWSE_COPY = {
   [USER_ROLES.CLIENT]: 'Track market rates, compare portfolios, and benchmark your open jobs.',
@@ -55,7 +56,7 @@ const BrowseJobs = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTier, setFilterTier] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const { userRole, roleSource, provider, account } = useWallet();
+  const { userRole, provider, account } = useWallet();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -80,6 +81,7 @@ const BrowseJobs = () => {
 
       const clientAddresses = [...new Set(milestoneRows.map(({ milestone }) => milestone.client.toLowerCase()))];
       const tierByClient = new Map();
+      const metadataByMilestoneId = new Map();
 
       await Promise.all(
         clientAddresses.map(async (client) => {
@@ -92,27 +94,49 @@ const BrowseJobs = () => {
         })
       );
 
+      await Promise.all(
+        milestoneRows.map(async ({ id, milestone }) => {
+          const cid = String(milestone.metadataCID || '').trim();
+          if (!cid) {
+            return;
+          }
+
+          try {
+            const metadata = await fetchMetadataFromCID(cid);
+            metadataByMilestoneId.set(id, metadata);
+          } catch {
+            // Fallback copy is used when metadata cannot be resolved.
+          }
+        })
+      );
+
       const nextJobs = milestoneRows
         .map(({ id, milestone, meta }) => {
           const amount = (Number(milestone.amountUSD) / 1e8).toFixed(2);
           const isUnsubmitted = milestone.deliverableHash === EMPTY_HASH;
           const shortClient = `${milestone.client.slice(0, 6)}...${milestone.client.slice(-4)}`;
           const shortFreelancer = `${milestone.freelancer.slice(0, 6)}...${milestone.freelancer.slice(-4)}`;
-          const title = meta
+          const metadata = metadataByMilestoneId.get(id);
+          const fallbackTitle = meta
             ? `Milestone #${id} · ${shortClient} -> ${shortFreelancer}`
             : `Escrow Milestone #${id}`;
+          const title = metadata?.jobTitle || metadata?.milestoneTitle || fallbackTitle;
+          const fallbackDescription = isUnsubmitted
+            ? `Created on-chain for ${amount} USD. Deliverable not submitted yet.`
+            : `Deliverable hash submitted: ${milestone.deliverableHash}`;
+          const description = metadata?.jobDescription || metadata?.milestoneDescription || fallbackDescription;
+
           return {
             id,
             title,
-            description: isUnsubmitted
-              ? `Created on-chain for ${amount} USD. Deliverable not submitted yet.`
-              : `Deliverable hash submitted: ${milestone.deliverableHash}`,
+            description,
             amount,
             milestones: 1,
             status: ESCROW_STATE_TO_STATUS[Number(milestone.state)] || 'open',
             clientTier: tierByClient.get(milestone.client.toLowerCase()) || 'NEW',
             client: milestone.client,
             freelancer: milestone.freelancer,
+            metadataCID: String(milestone.metadataCID || '').trim(),
           };
         })
         .filter((job) => {
@@ -162,9 +186,6 @@ const BrowseJobs = () => {
       <div className="mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">Browse Available Gigs</h1>
         <p className="text-gray-600">{ROLE_BROWSE_COPY[userRole] || ROLE_BROWSE_COPY[USER_ROLES.FREELANCER]}</p>
-        {roleSource === 'override' && (
-          <p className="text-xs text-blue-600 mt-2">Role override is active for testing flows.</p>
-        )}
       </div>
 
       <div className="card mb-8">

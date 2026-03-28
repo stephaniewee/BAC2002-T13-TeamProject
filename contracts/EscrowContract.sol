@@ -7,7 +7,6 @@ import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.so
 import "./interfaces/IReputationSBT.sol";
 
 contract EscrowContract is ReentrancyGuard, AccessControl {
-
     bytes32 public constant DISPUTE_ROLE = keccak256("DISPUTE_ROLE");
 
     AggregatorV3Interface public immutable priceFeed;
@@ -26,10 +25,12 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
     struct Milestone {
         address client;
         address freelancer;
-        uint256 amountUSD;       // 8 decimals — Chainlink format e.g. 500e8 = $500
-        uint256 lockedETH;       // actual ETH locked at funding time
+        uint256 amountUSD; // 8 decimals — Chainlink format e.g. 500e8 = $500
+        uint256 lockedETH; // actual ETH locked at funding time
         MilestoneState state;
-        uint256 deadline;        // unix timestamp
+        uint256 deadline; // unix timestamp
+        bytes32 metadataHash; // keccak256 digest of metadata CID
+        string metadataCID; // IPFS CID for milestone/job metadata JSON
         bytes32 deliverableHash; // IPFS hash stored on-chain
     }
 
@@ -41,10 +42,26 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
 
     // Max escrow value per SBT tier (in USD, 8 decimals — Chainlink format)
     // Tier 0: $500, Tier 1: $2000, Tier 2: $10000, Tier 3: unlimited (type(uint256).max)
-    uint256[4] public maxEscrowUSD = [500e8, 2000e8, 10000e8, type(uint256).max];
+    uint256[4] public maxEscrowUSD = [
+        500e8,
+        2000e8,
+        10000e8,
+        type(uint256).max
+    ];
 
-    event MilestoneCreated(uint256 indexed id, address client, address freelancer, uint256 amountUSD);
-    event MilestoneFunded(uint256 indexed id, uint256 ethLocked, uint256 ethRequired);
+    event MilestoneCreated(
+        uint256 indexed id,
+        address client,
+        address freelancer,
+        uint256 amountUSD,
+        bytes32 metadataHash,
+        string metadataCID
+    );
+    event MilestoneFunded(
+        uint256 indexed id,
+        uint256 ethLocked,
+        uint256 ethRequired
+    );
     event WorkSubmitted(uint256 indexed id, bytes32 deliverableHash);
     event MilestoneApproved(uint256 indexed id);
     event DisputeRaised(uint256 indexed id);
@@ -60,7 +77,9 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
     function createMilestone(
         address freelancer,
         uint256 amountUSD,
-        uint256 deadline
+        uint256 deadline,
+        bytes32 metadataHash,
+        string calldata metadataCID
     ) external returns (uint256) {
         require(freelancer != address(0), "Invalid freelancer");
         require(amountUSD > 0, "Amount must be > 0");
@@ -68,7 +87,10 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
 
         // NEW: enforce escrow cap based on freelancer's SBT tier
         uint8 tier = reputationSBT.getTier(freelancer);
-        require(amountUSD <= maxEscrowUSD[tier], "Escrow value exceeds tier cap");
+        require(
+            amountUSD <= maxEscrowUSD[tier],
+            "Escrow value exceeds tier cap"
+        );
 
         uint256 id = milestoneCount++;
         milestones[id] = Milestone({
@@ -78,9 +100,18 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
             lockedETH: 0,
             state: MilestoneState.CREATED,
             deadline: deadline,
+            metadataHash: metadataHash,
+            metadataCID: metadataCID,
             deliverableHash: bytes32(0)
         });
-        emit MilestoneCreated(id, msg.sender, freelancer, amountUSD);
+        emit MilestoneCreated(
+            id,
+            msg.sender,
+            freelancer,
+            amountUSD,
+            metadataHash,
+            metadataCID
+        );
         return id;
     }
 
@@ -101,7 +132,7 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
         uint8 tier = reputationSBT.getTier(m.freelancer);
         uint256 buffer = slippageBufferBPS[tier];
 
-        return baseETH + (baseETH * buffer / 10000);
+        return baseETH + ((baseETH * buffer) / 10000);
     }
 
     // ── 3. Fund milestone ────────────────────────────────────────────
@@ -118,7 +149,9 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
 
         // Refund overpayment
         if (msg.value > required) {
-            (bool sent, ) = payable(msg.sender).call{value: msg.value - required}("");
+            (bool sent, ) = payable(msg.sender).call{
+                value: msg.value - required
+            }("");
             require(sent, "Refund failed");
         }
 
@@ -131,7 +164,7 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
         require(msg.sender == m.freelancer, "Only freelancer");
         require(
             m.state == MilestoneState.FUNDED ||
-            m.state == MilestoneState.IN_PROGRESS,
+                m.state == MilestoneState.IN_PROGRESS,
             "Invalid state"
         );
         require(block.timestamp <= m.deadline, "Deadline passed");
@@ -203,12 +236,13 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
     }
 
     // ── 8. Auto-release on deadline (Chainlink Automation) ───────────
-    function checkUpkeep(bytes calldata) external view returns (bool upkeepNeeded, bytes memory performData) {
+    function checkUpkeep(
+        bytes calldata
+    ) external view returns (bool upkeepNeeded, bytes memory performData) {
         for (uint256 i = 0; i < milestoneCount; i++) {
             Milestone storage m = milestones[i];
             if (
-                m.state == MilestoneState.FUNDED &&
-                block.timestamp > m.deadline
+                m.state == MilestoneState.FUNDED && block.timestamp > m.deadline
             ) {
                 return (true, abi.encode(i));
             }
@@ -239,11 +273,13 @@ contract EscrowContract is ReentrancyGuard, AccessControl {
     // Safety valve: allows admin to recover ETH if a milestone is permanently stuck
     // (e.g. both parties unreachable, contract bug). Requires DEFAULT_ADMIN_ROLE.
     // Cannot drain an active milestone — only callable on RESOLVED/COMPLETED states.
-    function emergencyWithdraw(uint256 id) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function emergencyWithdraw(
+        uint256 id
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         Milestone storage m = milestones[id];
         require(
             m.state == MilestoneState.RESOLVED ||
-            m.state == MilestoneState.COMPLETED,
+                m.state == MilestoneState.COMPLETED,
             "Milestone still active"
         );
         require(address(this).balance > 0, "Nothing to withdraw");

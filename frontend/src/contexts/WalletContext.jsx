@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useState, useCallback, useEffect } from 'react';
 import { BrowserProvider } from 'ethers';
 import { USER_ROLES } from '../constants/contracts';
 import { getDisputeReadContract, getEscrowReadContract } from '../utils/contracts';
@@ -6,7 +6,6 @@ import { getDisputeReadContract, getEscrowReadContract } from '../utils/contract
 export const WalletContext = createContext();
 
 const ONCHAIN_ROLE_STORAGE_KEY_PREFIX = 'freelancechain:onChainRole:';
-const ROLE_OVERRIDE_STORAGE_KEY = 'freelancechain:roleOverride';
 
 const VALID_ROLES = new Set(Object.values(USER_ROLES));
 
@@ -14,19 +13,15 @@ const sanitizeRole = (role) => (VALID_ROLES.has(role) ? role : null);
 const getOnChainRoleStorageKey = (account) => `${ONCHAIN_ROLE_STORAGE_KEY_PREFIX}${String(account || '').toLowerCase()}`;
 
 export const WalletProvider = ({ children }) => {
-  const previousAccountRef = useRef(null);
   const [account, setAccount] = useState(null);
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [onChainRole, setOnChainRole] = useState(null);
-  const [roleOverride, setRoleOverrideState] = useState(
-    sanitizeRole(localStorage.getItem(ROLE_OVERRIDE_STORAGE_KEY))
-  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
 
-  const userRole = roleOverride || onChainRole || USER_ROLES.FREELANCER;
-  const roleSource = roleOverride ? 'override' : (onChainRole ? 'onchain' : 'default');
+  const userRole = onChainRole || USER_ROLES.FREELANCER;
+  const roleSource = onChainRole ? 'onchain' : 'default';
 
   const resetWalletState = useCallback(() => {
     setAccount(null);
@@ -130,32 +125,9 @@ export const WalletProvider = ({ children }) => {
     }
   }, [resolveOnChainRole]);
 
-  const setRoleOverride = useCallback((nextRole) => {
-    const sanitizedRole = sanitizeRole(nextRole);
-    if (!sanitizedRole) {
-      return;
-    }
-
-    setRoleOverrideState(sanitizedRole);
-    localStorage.setItem(ROLE_OVERRIDE_STORAGE_KEY, sanitizedRole);
-  }, []);
-
-  const clearRoleOverride = useCallback(() => {
-    setRoleOverrideState(null);
-    localStorage.removeItem(ROLE_OVERRIDE_STORAGE_KEY);
-  }, []);
-
   const disconnectWallet = useCallback(() => {
     resetWalletState();
   }, [resetWalletState]);
-
-  useEffect(() => {
-    const previousAccount = previousAccountRef.current;
-    if (previousAccount && account && previousAccount.toLowerCase() !== account.toLowerCase()) {
-      clearRoleOverride();
-    }
-    previousAccountRef.current = account;
-  }, [account, clearRoleOverride]);
 
   useEffect(() => {
     if (!window.ethereum) {
@@ -223,15 +195,12 @@ export const WalletProvider = ({ children }) => {
     provider,
     signer,
     onChainRole,
-    roleOverride,
     userRole,
     roleSource,
     isConnecting,
     error,
     connectWallet,
     disconnectWallet,
-    setRoleOverride,
-    clearRoleOverride,
     isConnected: !!account,
   };
 

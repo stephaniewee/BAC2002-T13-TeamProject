@@ -3,10 +3,10 @@ import { CONTRACT_ADDRESSES, NETWORK_CONFIG } from '../constants/contracts';
 
 // Minimal ABIs used by current UI flows.
 const ESCROW_ABI = [
-    'event MilestoneCreated(uint256 indexed id, address client, address freelancer, uint256 amountUSD)',
+    'event MilestoneCreated(uint256 indexed id, address client, address freelancer, uint256 amountUSD, bytes32 metadataHash, string metadataCID)',
     'function milestoneCount() view returns (uint256)',
-    'function milestones(uint256) view returns (address client, address freelancer, uint256 amountUSD, uint256 lockedETH, uint8 state, uint256 deadline, bytes32 deliverableHash)',
-    'function createMilestone(address freelancer, uint256 amountUSD, uint256 deadline) returns (uint256)',
+    'function milestones(uint256) view returns (address client, address freelancer, uint256 amountUSD, uint256 lockedETH, uint8 state, uint256 deadline, bytes32 metadataHash, string metadataCID, bytes32 deliverableHash)',
+    'function createMilestone(address freelancer, uint256 amountUSD, uint256 deadline, bytes32 metadataHash, string metadataCID) returns (uint256)',
     'function getRequiredETH(uint256 milestoneId) view returns (uint256)',
     'function fundMilestone(uint256 id) payable',
     'function raiseDispute(uint256 id)',
@@ -165,6 +165,8 @@ export const loadEscrowMilestones = async (provider) => {
                     createdClient: evt.args?.client,
                     createdFreelancer: evt.args?.freelancer,
                     createdAmountUSD: evt.args?.amountUSD,
+                    metadataHash: evt.args?.metadataHash,
+                    metadataCID: evt.args?.metadataCID,
                     txHash: evt.transactionHash,
                     blockNumber: evt.blockNumber,
                     blockTimestamp: block?.timestamp ?? null,

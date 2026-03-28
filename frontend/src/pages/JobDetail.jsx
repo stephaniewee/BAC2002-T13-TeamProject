@@ -12,6 +12,7 @@ import {
   loadEscrowMilestones,
   getWalletReputation,
 } from '../utils/contracts';
+import { fetchMetadataFromCID } from '../utils/ipfs';
 
 const ROLE_ACTIONS = {
   [USER_ROLES.CLIENT]: {
@@ -142,7 +143,7 @@ const isBytes32 = (value) => /^0x[0-9a-fA-F]{64}$/.test(value || '');
 const JobDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { userRole, roleSource, provider, signer } = useWallet();
+  const { userRole, provider, signer } = useWallet();
   const currentActions = ROLE_ACTIONS[userRole] || ROLE_ACTIONS[USER_ROLES.FREELANCER];
   const [milestone, setMilestone] = useState(null);
   const [clientTier, setClientTier] = useState('NEW');
@@ -206,13 +207,26 @@ const JobDetail = () => {
       const shortClient = `${chainMilestone.client.slice(0, 6)}...${chainMilestone.client.slice(-4)}`;
       const shortFreelancer = `${chainMilestone.freelancer.slice(0, 6)}...${chainMilestone.freelancer.slice(-4)}`;
       const createdAt = eventMeta?.blockTimestamp ? formatDate(eventMeta.blockTimestamp) : formatDate(chainMilestone.deadline);
+      const metadataCID = String(chainMilestone.metadataCID || '').trim();
+
+      let resolvedMetadata = null;
+      if (metadataCID) {
+        try {
+          resolvedMetadata = await fetchMetadataFromCID(metadataCID);
+        } catch {
+          resolvedMetadata = null;
+        }
+      }
+
+      const fallbackTitle = `Milestone #${milestoneId} · ${shortClient} -> ${shortFreelancer}`;
+      const fallbackDescription = chainMilestone.deliverableHash === '0x0000000000000000000000000000000000000000000000000000000000000000'
+        ? 'No deliverable submitted yet.'
+        : `Deliverable hash submitted: ${chainMilestone.deliverableHash}`;
 
       setMilestone({
         id: milestoneId,
-        title: `Milestone #${milestoneId} · ${shortClient} -> ${shortFreelancer}`,
-        description: chainMilestone.deliverableHash === '0x0000000000000000000000000000000000000000000000000000000000000000'
-          ? 'No deliverable submitted yet.'
-          : `Deliverable hash submitted: ${chainMilestone.deliverableHash}`,
+        title: resolvedMetadata?.jobTitle || resolvedMetadata?.milestoneTitle || fallbackTitle,
+        description: resolvedMetadata?.jobDescription || resolvedMetadata?.milestoneDescription || fallbackDescription,
         amount: amountUSD.toFixed(2),
         status: ESCROW_STATE_TO_UI[Number(chainMilestone.state)] || 'pending',
         deadline: formatDate(chainMilestone.deadline),
@@ -222,6 +236,7 @@ const JobDetail = () => {
         client: chainMilestone.client,
         freelancer: chainMilestone.freelancer,
         lockedETH: chainMilestone.lockedETH,
+        metadataCID,
         createdAt,
         creationTxHash: eventMeta?.txHash || '',
       });
@@ -416,9 +431,6 @@ const JobDetail = () => {
 
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
           <p className="text-sm font-medium text-blue-800">{currentActions.helper}</p>
-          {roleSource === 'override' && (
-            <p className="text-xs text-blue-600 mt-1">Role override active for testing.</p>
-          )}
         </div>
       </div>
 

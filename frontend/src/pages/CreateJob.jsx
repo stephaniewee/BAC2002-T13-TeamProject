@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 import { emitTxConfirmedEvent, ensureSepoliaNetwork, getEscrowWriteContract } from '../utils/contracts';
+import { metadataCidToHash, uploadMetadataToIPFS } from '../utils/ipfs';
 
 const CheckCircleIcon = () => (
   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-green-600 mt-0.5" aria-hidden="true">
@@ -16,6 +17,7 @@ const CheckCircleIcon = () => (
 
 const CREATE_FLOW_STEPS = [
   'Check Network',
+  'Upload Metadata',
   'Create Milestone',
   'Confirm Creation',
   'Fund Escrow',
@@ -25,11 +27,12 @@ const CREATE_FLOW_STEPS = [
 const resolveCreateFlowStep = (status) => {
   if (!status) return 0;
   if (status.includes('Checking network')) return 1;
-  if (status.includes('Creating milestone transaction')) return 2;
-  if (status.includes('Waiting for milestone creation confirmation')) return 3;
-  if (status.includes('Funding escrow')) return 4;
-  if (status.includes('Waiting for funding confirmation')) return 5;
-  if (status.includes('successfully')) return 5;
+  if (status.includes('Uploading metadata')) return 2;
+  if (status.includes('Creating milestone transaction')) return 3;
+  if (status.includes('Waiting for milestone creation confirmation')) return 4;
+  if (status.includes('Funding escrow')) return 5;
+  if (status.includes('Waiting for funding confirmation')) return 6;
+  if (status.includes('successfully')) return 6;
   return 0;
 };
 
@@ -47,10 +50,12 @@ const CreateJob = () => {
   const submitLockRef = useRef(false);
   const [formData, setFormData] = useState({
     freelancer: '',
+    jobTitle: '',
+    jobDescription: '',
     totalAmount: '',
     deadline: '',
     milestones: [
-      { amount: '', deadline: '' },
+      { title: '', description: '', amount: '', deadline: '' },
     ],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -139,20 +144,6 @@ const CreateJob = () => {
     }));
   };
 
-  const addMilestone = () => {
-    setFormData(prev => ({
-      ...prev,
-      milestones: [...prev.milestones, { amount: '', deadline: '' }],
-    }));
-  };
-
-  const removeMilestone = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      milestones: prev.milestones.filter((_, i) => i !== index),
-    }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -168,8 +159,12 @@ const CreateJob = () => {
       }
 
       const firstMilestone = formData.milestones[0];
-      if (!firstMilestone?.amount || !firstMilestone?.deadline) {
-        throw new Error('At least one milestone amount and deadline are required.');
+      if (!firstMilestone?.title || !firstMilestone?.description || !firstMilestone?.amount || !firstMilestone?.deadline) {
+        throw new Error('Milestone title, description, amount, and deadline are required.');
+      }
+
+      if (!formData.jobTitle || !formData.jobDescription) {
+        throw new Error('Job title and description are required.');
       }
 
       const amountUSD = BigInt(Math.round(Number(firstMilestone.amount) * 1e8));
@@ -189,9 +184,27 @@ const CreateJob = () => {
       const escrow = getEscrowWriteContract(signer);
 
       const nextMilestoneId = await escrow.milestoneCount();
+      const metadataPayload = {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        jobTitle: formData.jobTitle.trim(),
+        jobDescription: formData.jobDescription.trim(),
+        milestoneTitle: firstMilestone.title.trim(),
+        milestoneDescription: firstMilestone.description.trim(),
+        projectDeadline: formData.deadline,
+        totalBudgetUSD: Number(formData.totalAmount),
+        milestone: {
+          amountUSD: Number(firstMilestone.amount),
+          deadline: firstMilestone.deadline,
+        },
+      };
+
+      setSubmitState({ status: 'Uploading metadata to IPFS...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: '', fundTxHash: '' });
+      const metadataCID = await uploadMetadataToIPFS(metadataPayload);
+      const metadataHash = metadataCidToHash(metadataCID);
 
       setSubmitState({ status: 'Creating milestone transaction...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: '', fundTxHash: '' });
-      const createTx = await escrow.createMilestone(formData.freelancer, amountUSD, BigInt(deadlineTs));
+      const createTx = await escrow.createMilestone(formData.freelancer, amountUSD, BigInt(deadlineTs), metadataHash, metadataCID);
       setSubmitState({ status: 'Waiting for milestone creation confirmation...', error: '', milestoneId: Number(nextMilestoneId), createTxHash: createTx.hash, fundTxHash: '' });
       await createTx.wait();
 
@@ -241,7 +254,7 @@ const CreateJob = () => {
     return (
       <div className="max-w-2xl mx-auto px-6 py-12 text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-4">Client Role Required</h1>
-        <p className="text-gray-600 mb-6">Posting a job is available for clients. Switch your role in the header for testing.</p>
+        <p className="text-gray-600 mb-6">Posting a job is available for client wallets. Connect the client wallet to continue.</p>
       </div>
     );
   }
@@ -257,7 +270,7 @@ const CreateJob = () => {
       </button>
 
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Post a New Job</h1>
-      <p className="text-gray-600 mb-8">Create a job with multiple milestones and fund your escrow</p>
+      <p className="text-gray-600 mb-8">Create one on-chain milestone with metadata and fund your escrow.</p>
 
       {showProgressPanel && (
         <div ref={progressPanelRef} className="card mb-8">
@@ -270,7 +283,7 @@ const CreateJob = () => {
           <div className="space-y-2">
             {CREATE_FLOW_STEPS.map((step, index) => {
               const stepNumber = index + 1;
-              const isDone = currentFlowStep > stepNumber || (currentFlowStep === 5 && submitState.status.includes('successfully'));
+              const isDone = currentFlowStep > stepNumber || (currentFlowStep === 6 && submitState.status.includes('successfully'));
               const isCurrent = currentFlowStep === stepNumber && !submitState.status.includes('successfully');
               return (
                 <div key={step} className="flex items-center gap-3">
@@ -338,6 +351,38 @@ const CreateJob = () => {
 
           <div className="space-y-4">
             <div>
+              <label htmlFor="jobTitle" className="block text-sm font-medium text-gray-700 mb-2">
+                Job Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="jobTitle"
+                name="jobTitle"
+                value={formData.jobTitle}
+                onChange={handleInputChange}
+                placeholder="e.g., Full-Stack DApp Build"
+                className="input-base"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="jobDescription" className="block text-sm font-medium text-gray-700 mb-2">
+                Job Description <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="jobDescription"
+                name="jobDescription"
+                value={formData.jobDescription}
+                onChange={handleInputChange}
+                placeholder="Describe project scope, expected delivery, and acceptance criteria."
+                className="input-base"
+                rows="4"
+                required
+              />
+            </div>
+
+            <div>
               <label htmlFor="freelancer" className="block text-sm font-medium text-gray-700 mb-2">
                 Freelancer Wallet Address <span className="text-red-500">*</span>
               </label>
@@ -391,33 +436,45 @@ const CreateJob = () => {
         {/* Milestones */}
         <div className="card">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Milestones</h2>
-            <button
-              type="button"
-              onClick={addMilestone}
-              className="btn-secondary text-sm"
-            >
-              + Add Milestone
-            </button>
+            <h2 className="text-2xl font-bold text-gray-900">Milestone</h2>
           </div>
 
           <div className="space-y-6">
             {formData.milestones.map((milestone, index) => (
               <div key={index} className="p-4 border border-gray-200 rounded-lg">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold text-gray-900">Milestone {index + 1}</h3>
-                  {formData.milestones.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeMilestone(index)}
-                      className="text-red-600 hover:text-red-700 text-sm font-medium"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <h3 className="font-semibold text-gray-900">Milestone Details</h3>
                 </div>
 
                 <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Milestone Title <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={milestone.title}
+                      onChange={(e) => handleMilestoneChange(index, 'title', e.target.value)}
+                      placeholder="e.g., Smart Contract + Frontend Delivery"
+                      className="input-base"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Milestone Description <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={milestone.description}
+                      onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
+                      placeholder="Describe the exact deliverables for this milestone."
+                      className="input-base"
+                      rows="3"
+                      required
+                    />
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -453,7 +510,7 @@ const CreateJob = () => {
 
           <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm text-gray-700">
-              <strong>Budget Breakdown:</strong> Sum of milestone amounts must equal total budget
+              <strong>Note:</strong> Current contract stores one on-chain milestone per post. Job and milestone metadata are uploaded to IPFS and linked on-chain.
             </p>
           </div>
         </div>

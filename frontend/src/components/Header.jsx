@@ -37,10 +37,7 @@ const Header = () => {
     connectWallet,
     disconnectWallet,
     userRole,
-    roleSource,
     provider,
-    setRoleOverride,
-    clearRoleOverride,
   } = useWallet();
   const [networkStatus, setNetworkStatus] = useState({ ok: false, label: 'Not Connected' });
 
@@ -49,9 +46,6 @@ const Header = () => {
   const formatAddress = (addr) => {
     return `${addr?.slice(0, 6)}...${addr?.slice(-4)}`;
   };
-
-  const isOverrideActive = roleSource === 'override';
-  const roleSelectValue = isOverrideActive ? userRole : 'onchain';
 
   useEffect(() => {
     if (!provider) {
@@ -113,32 +107,8 @@ const Header = () => {
 
         {isConnected ? (
           <div className="flex flex-wrap items-center gap-3 lg:justify-self-end lg:justify-end">
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wide text-gray-500">Role</span>
-              <select
-                value={roleSelectValue}
-                onChange={(event) => {
-                  const { value } = event.target;
-                  if (value === 'onchain') {
-                    clearRoleOverride();
-                    return;
-                  }
-                  setRoleOverride(value);
-                }}
-                className="px-2 py-2 bg-gray-100 rounded-lg text-sm font-medium text-gray-900 border border-gray-200 focus-ring min-w-[128px]"
-              >
-                <option value="onchain">On-chain Role</option>
-                {Object.values(USER_ROLES).map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="px-3 py-2 bg-blue-50 rounded-lg text-xs font-semibold text-blue-700 whitespace-nowrap">
               {ROLE_LABELS[userRole]}
-              {isOverrideActive && ' (Override)'}
             </div>
 
             <div className="px-3 py-2 bg-gray-100 rounded-lg text-sm font-medium text-gray-900 whitespace-nowrap">
