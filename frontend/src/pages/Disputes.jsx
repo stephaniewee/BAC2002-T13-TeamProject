@@ -41,6 +41,10 @@ const formatDisputeStatus = (status) => {
   return status;
 };
 
+const resolveWinnerLabel = (releasedToFreelancer) => (releasedToFreelancer ? 'Freelancer won' : 'Client won');
+
+const resolvePayoutLabel = (releasedToFreelancer) => (releasedToFreelancer ? 'Freelancer' : 'Client');
+
 const DisputeCard = ({
   dispute,
   userRole,
@@ -84,6 +88,26 @@ const DisputeCard = ({
           <p className="font-bold text-gray-900">#{dispute.id}</p>
         </div>
       </div>
+
+      {isResolved && typeof dispute.releasedToFreelancer === 'boolean' && (
+        <div className="p-4 bg-green-50 rounded-lg mb-4 border border-green-200">
+          <p className="text-sm font-semibold text-green-800">Outcome: {resolveWinnerLabel(dispute.releasedToFreelancer)}</p>
+          <p className="text-sm text-green-700">Payout Released To: {resolvePayoutLabel(dispute.releasedToFreelancer)}</p>
+          {dispute.resolvedAt && (
+            <p className="text-xs text-green-700 mt-1">Resolved At: {dispute.resolvedAt}</p>
+          )}
+          {dispute.resolveTxHash && (
+            <a
+              href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${dispute.resolveTxHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs underline text-green-800"
+            >
+              View resolution transaction
+            </a>
+          )}
+        </div>
+      )}
 
       {isArbitrator && dispute.status === 'pending_arbitration' && (
         <div>
@@ -159,22 +183,43 @@ const Disputes = () => {
       setError('');
       await ensureSepoliaNetwork(provider);
 
+      const disputeRead = getDisputeReadContract(provider);
+      const resolutionEvents = await disputeRead.queryFilter(disputeRead.filters.DisputeResolved(), 0, 'latest');
+      const resolutionByMilestone = new Map(
+        resolutionEvents.map((event) => [
+          Number(event.args?.milestoneId ?? -1),
+          {
+            releasedToFreelancer: Boolean(event.args?.releasedToFreelancer),
+            arbitrator: event.args?.arbitrator,
+            resolvedAt: formatDateTime(Number(event.args?.timestamp ?? 0)),
+            resolveTxHash: event.transactionHash,
+          },
+        ])
+      );
+
       const rows = await loadEscrowMilestones(provider);
       const loaded = rows
         .filter(({ milestone }) => {
           const stateValue = Number(milestone.state);
           return stateValue === DISPUTED_STATE || stateValue === RESOLVED_STATE;
         })
-        .map(({ id, milestone, meta }) => ({
-          id,
-          jobTitle: `Dispute #${id} · ${formatAddress(milestone.client)} vs ${formatAddress(milestone.freelancer)}`,
-          milestoneNumber: id,
-          amountUSD: milestone.amountUSD,
-          status: Number(milestone.state) === DISPUTED_STATE ? 'pending_arbitration' : 'resolved',
-          client: milestone.client,
-          freelancer: milestone.freelancer,
-          openedAt: formatDateTime(meta?.blockTimestamp),
-        }));
+        .map(({ id, milestone, meta }) => {
+          const resolution = resolutionByMilestone.get(id) || null;
+          return {
+            id,
+            jobTitle: `Dispute #${id} · ${formatAddress(milestone.client)} vs ${formatAddress(milestone.freelancer)}`,
+            milestoneNumber: id,
+            amountUSD: milestone.amountUSD,
+            status: Number(milestone.state) === DISPUTED_STATE ? 'pending_arbitration' : 'resolved',
+            client: milestone.client,
+            freelancer: milestone.freelancer,
+            openedAt: formatDateTime(meta?.blockTimestamp),
+            releasedToFreelancer: resolution?.releasedToFreelancer,
+            arbitrator: resolution?.arbitrator,
+            resolvedAt: resolution?.resolvedAt,
+            resolveTxHash: resolution?.resolveTxHash,
+          };
+        });
 
       setDisputes(loaded);
       setSplitById(Object.fromEntries(loaded.map((item) => [item.id, 50])));

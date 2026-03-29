@@ -15,6 +15,7 @@ const ESCROW_ABI = [
 ];
 
 const DISPUTE_ABI = [
+    'event DisputeResolved(uint256 indexed milestoneId, address indexed arbitrator, bool releasedToFreelancer, uint256 timestamp)',
     'function resolveDispute(uint256 milestoneId, bool releaseToFreelancer)',
     'function isArbitrator(address account) view returns (bool)',
 ];

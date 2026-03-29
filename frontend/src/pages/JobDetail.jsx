@@ -8,6 +8,7 @@ import {
   emitTxConfirmedEvent,
   ensureSepoliaNetwork,
   getCurrentEthPriceUsd,
+  getDisputeReadContract,
   getEscrowWriteContract,
   loadEscrowMilestones,
   getWalletReputation,
@@ -71,6 +72,11 @@ const BACK_FALLBACK_BY_ROLE = {
 const formatDate = (unixSeconds) => {
   if (!unixSeconds) return '-';
   return new Date(Number(unixSeconds) * 1000).toLocaleDateString();
+};
+
+const formatDateTime = (unixSeconds) => {
+  if (!unixSeconds) return 'Unknown time';
+  return new Date(Number(unixSeconds) * 1000).toLocaleString();
 };
 
 const formatReleaseWindow = (deadlineSeconds) => {
@@ -153,6 +159,7 @@ const JobDetail = () => {
   const [error, setError] = useState('');
   const [txState, setTxState] = useState({ loading: false, message: '', error: '', txHash: '' });
   const [copyStatus, setCopyStatus] = useState('');
+  const [resolutionOutcome, setResolutionOutcome] = useState(null);
 
   const milestoneId = Number(id);
 
@@ -222,6 +229,33 @@ const JobDetail = () => {
       const fallbackDescription = chainMilestone.deliverableHash === '0x0000000000000000000000000000000000000000000000000000000000000000'
         ? 'No deliverable submitted yet.'
         : `Deliverable hash submitted: ${chainMilestone.deliverableHash}`;
+
+      let resolvedOutcome = null;
+      if (Number(chainMilestone.state) === 6) {
+        try {
+          const disputeRead = getDisputeReadContract(provider);
+          const events = await disputeRead.queryFilter(
+            disputeRead.filters.DisputeResolved(BigInt(milestoneId)),
+            0,
+            'latest'
+          );
+          const lastResolution = events.at(-1);
+          if (lastResolution) {
+            const releasedToFreelancer = Boolean(lastResolution.args?.releasedToFreelancer);
+            resolvedOutcome = {
+              releasedToFreelancer,
+              winnerLabel: releasedToFreelancer ? 'Freelancer won' : 'Client won',
+              payoutLabel: releasedToFreelancer ? 'Freelancer' : 'Client',
+              resolvedAt: formatDateTime(Number(lastResolution.args?.timestamp ?? 0)),
+              txHash: lastResolution.transactionHash,
+            };
+          }
+        } catch {
+          resolvedOutcome = null;
+        }
+      }
+
+      setResolutionOutcome(resolvedOutcome);
 
       setMilestone({
         id: milestoneId,
@@ -337,7 +371,7 @@ const JobDetail = () => {
   const job = {
     id: milestone.id,
     title: milestone.title,
-    description: 'On-chain escrow milestone details from the deployed EscrowContract.',
+    description: milestone.description,
     client: {
       address: milestone.client,
       name: 'On-chain Client',
@@ -432,6 +466,24 @@ const JobDetail = () => {
         <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
           <p className="text-sm font-medium text-blue-800">{currentActions.helper}</p>
         </div>
+
+        {milestone.stateValue === 6 && resolutionOutcome && (
+          <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+            <p className="text-sm font-semibold text-green-800">Outcome: {resolutionOutcome.winnerLabel}</p>
+            <p className="text-sm text-green-700">Payout Released To: {resolutionOutcome.payoutLabel}</p>
+            <p className="text-xs text-green-700 mt-1">Resolved At: {resolutionOutcome.resolvedAt}</p>
+            {resolutionOutcome.txHash && (
+              <a
+                href={`${NETWORK_CONFIG.EXPLORER_URL}/tx/${resolutionOutcome.txHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs underline text-green-800"
+              >
+                View resolution transaction
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Job Summary */}
