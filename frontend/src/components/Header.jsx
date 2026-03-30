@@ -4,12 +4,16 @@ import { useWallet } from '../hooks/useWallet';
 import { NETWORK_CONFIG, USER_ROLES } from '../constants/contracts';
 
 const ROLE_LABELS = {
+  [USER_ROLES.UNASSIGNED]: 'Unassigned',
   [USER_ROLES.CLIENT]: 'Client',
   [USER_ROLES.FREELANCER]: 'Freelancer',
   [USER_ROLES.ARBITRATOR]: 'Arbitrator',
 };
 
 const NAV_ITEMS_BY_ROLE = {
+  [USER_ROLES.UNASSIGNED]: [
+    { label: 'Dashboard', to: '/' },
+  ],
   [USER_ROLES.CLIENT]: [
     { label: 'Dashboard', to: '/' },
     { label: 'My Jobs', to: '/my-jobs' },
@@ -41,7 +45,7 @@ const Header = () => {
   } = useWallet();
   const [networkStatus, setNetworkStatus] = useState({ ok: false, label: 'Not Connected' });
 
-  const navItems = NAV_ITEMS_BY_ROLE[userRole] || NAV_ITEMS_BY_ROLE[USER_ROLES.FREELANCER];
+  const navItems = NAV_ITEMS_BY_ROLE[userRole] || NAV_ITEMS_BY_ROLE[USER_ROLES.UNASSIGNED];
 
   const formatAddress = (addr) => {
     return `${addr?.slice(0, 6)}...${addr?.slice(-4)}`;

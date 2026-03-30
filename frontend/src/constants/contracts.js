@@ -8,6 +8,7 @@ export const CONTRACT_ADDRESSES = {
 
 // User Roles
 export const USER_ROLES = {
+  UNASSIGNED: 'unassigned',
   CLIENT: 'client',
   FREELANCER: 'freelancer',
   ARBITRATOR: 'arbitrator',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useWallet } from '../hooks/useWallet';
 import { USER_ROLES } from '../constants/contracts';
 import OnchainHealthPanel from '../components/OnchainHealthPanel';
@@ -102,7 +102,16 @@ const HeroFeatureIcon = ({ type }) => {
 };
 
 const Home = () => {
-  const { isConnected, connectWallet, userRole, provider, account } = useWallet();
+  const navigate = useNavigate();
+  const {
+    isConnected,
+    connectWallet,
+    userRole,
+    roleSource,
+    chooseOnboardingRole,
+    provider,
+    account,
+  } = useWallet();
   const [stats, setStats] = useState([]);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -111,6 +120,17 @@ const Home = () => {
 
   const roleLabel = userRole.charAt(0).toUpperCase() + userRole.slice(1);
   const dashboard = DASHBOARD_CONTENT[userRole] || DASHBOARD_CONTENT[USER_ROLES.FREELANCER];
+  const isFirstTimeOnboarding = roleSource === 'unassigned';
+
+  const handleChooseClient = () => {
+    chooseOnboardingRole(USER_ROLES.CLIENT);
+    navigate('/create-job');
+  };
+
+  const handleChooseFreelancer = () => {
+    chooseOnboardingRole(USER_ROLES.FREELANCER);
+    navigate('/browse');
+  };
 
   const loadDashboard = useCallback(async () => {
     if (!provider || !account) {
@@ -384,6 +404,56 @@ const Home = () => {
             <p>Currently running on Sepolia Testnet</p>
             <p>Make sure you have testnet ETH and USDC</p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFirstTimeOnboarding) {
+    return (
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        <OnchainHealthPanel />
+
+        <div className="mt-6 mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome to FreelanceChain</h1>
+          <p className="text-gray-700">This wallet has no on-chain role yet. Choose how you want to start.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="card border border-blue-200 bg-gradient-to-br from-blue-50 to-white">
+            <p className="text-xs uppercase tracking-wide font-semibold text-blue-700 mb-2">Path A</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Start as Client</h2>
+            <p className="text-sm text-gray-700 mb-5">Post a job, assign a freelancer wallet, and fund escrow from your account.</p>
+            <button
+              type="button"
+              onClick={handleChooseClient}
+              className="btn-primary w-full"
+            >
+              Continue as Client
+            </button>
+            <p className="text-xs text-gray-500 mt-3">After your first milestone transaction, your role is resolved from on-chain data.</p>
+          </div>
+
+          <div className="card border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+            <p className="text-xs uppercase tracking-wide font-semibold text-emerald-700 mb-2">Path B</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Start as Freelancer</h2>
+            <p className="text-sm text-gray-700 mb-5">Browse jobs and share your wallet so a client can assign you to a milestone.</p>
+            <button
+              type="button"
+              onClick={handleChooseFreelancer}
+              className="btn-secondary w-full"
+            >
+              Continue as Freelancer
+            </button>
+            <p className="text-xs text-gray-500 mt-3">You become freelancer on-chain when a client creates a milestone with your address.</p>
+          </div>
+        </div>
+
+        <div className="card mt-6 border border-amber-200 bg-amber-50">
+          <p className="text-sm text-amber-800">
+            This onboarding appears only for wallets with no detected on-chain role.
+            Once on-chain activity is found, this panel will disappear automatically.
+          </p>
         </div>
       </div>
     );

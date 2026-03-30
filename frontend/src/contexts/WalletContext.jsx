@@ -6,37 +6,41 @@ import { getDisputeReadContract, getEscrowReadContract } from '../utils/contract
 export const WalletContext = createContext();
 
 const ONCHAIN_ROLE_STORAGE_KEY_PREFIX = 'freelancechain:onChainRole:';
+const ONBOARDING_ROLE_STORAGE_KEY_PREFIX = 'freelancechain:onboardingRole:';
 
 const VALID_ROLES = new Set(Object.values(USER_ROLES));
+const VALID_ONBOARDING_ROLES = new Set([USER_ROLES.CLIENT, USER_ROLES.FREELANCER]);
 
 const sanitizeRole = (role) => (VALID_ROLES.has(role) ? role : null);
 const getOnChainRoleStorageKey = (account) => `${ONCHAIN_ROLE_STORAGE_KEY_PREFIX}${String(account || '').toLowerCase()}`;
+const getOnboardingRoleStorageKey = (account) => `${ONBOARDING_ROLE_STORAGE_KEY_PREFIX}${String(account || '').toLowerCase()}`;
 
 export const WalletProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [onChainRole, setOnChainRole] = useState(null);
+  const [onboardingRole, setOnboardingRole] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
 
-  const userRole = onChainRole || USER_ROLES.FREELANCER;
-  const roleSource = onChainRole ? 'onchain' : 'default';
+  const userRole = onChainRole || onboardingRole || USER_ROLES.UNASSIGNED;
+  const roleSource = onChainRole ? 'onchain' : onboardingRole ? 'onboarding' : 'unassigned';
 
   const resetWalletState = useCallback(() => {
     setAccount(null);
     setProvider(null);
     setSigner(null);
     setOnChainRole(null);
+    setOnboardingRole(null);
     localStorage.removeItem('walletConnected');
   }, []);
 
   const resolveOnChainRole = useCallback(async (activeProvider, activeAccount) => {
     const scopedStorageKey = getOnChainRoleStorageKey(activeAccount);
-    const sanitizedStoredRole = sanitizeRole(localStorage.getItem(scopedStorageKey));
 
     if (!activeProvider || !activeAccount) {
-      return sanitizedStoredRole || USER_ROLES.FREELANCER;
+      return null;
     }
 
     const normalizedAccount = activeAccount.toLowerCase();
@@ -80,13 +84,31 @@ export const WalletProvider = ({ children }) => {
       // Ignore and continue to fallback/default role.
     }
 
-    // Never inherit another account role: if no on-chain match for this account,
-    // persist and return freelancer for this account.
-    const fallbackRole = sanitizedStoredRole || USER_ROLES.FREELANCER;
-    localStorage.setItem(scopedStorageKey, fallbackRole);
+    localStorage.removeItem(scopedStorageKey);
     localStorage.removeItem('freelancechain:onChainRole');
-    return fallbackRole;
+    return null;
   }, []);
+
+  const resolveOnboardingRole = useCallback((activeAccount) => {
+    if (!activeAccount) {
+      return null;
+    }
+
+    const scopedStorageKey = getOnboardingRoleStorageKey(activeAccount);
+    const stored = localStorage.getItem(scopedStorageKey);
+    return VALID_ONBOARDING_ROLES.has(stored) ? stored : null;
+  }, []);
+
+  const chooseOnboardingRole = useCallback((role) => {
+    const sanitized = VALID_ONBOARDING_ROLES.has(role) ? role : null;
+    if (!sanitized || !account || onChainRole) {
+      return;
+    }
+
+    const scopedStorageKey = getOnboardingRoleStorageKey(account);
+    localStorage.setItem(scopedStorageKey, sanitized);
+    setOnboardingRole(sanitized);
+  }, [account, onChainRole]);
 
   useEffect(() => {
     // Clean up legacy unscoped role cache keys from older versions.
@@ -108,12 +130,18 @@ export const WalletProvider = ({ children }) => {
 
       const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const resolvedRole = await resolveOnChainRole(provider, accounts[0]);
+      const resolvedOnChainRole = await resolveOnChainRole(provider, accounts[0]);
+      const resolvedOnboardingRole = resolvedOnChainRole ? null : resolveOnboardingRole(accounts[0]);
 
       setAccount(accounts[0]);
       setProvider(provider);
       setSigner(signer);
-      setOnChainRole(resolvedRole);
+      setOnChainRole(resolvedOnChainRole);
+      setOnboardingRole(resolvedOnboardingRole);
+
+      if (resolvedOnChainRole) {
+        localStorage.removeItem(getOnboardingRoleStorageKey(accounts[0]));
+      }
 
       // Save to localStorage
       localStorage.setItem('walletConnected', 'true');
@@ -123,7 +151,7 @@ export const WalletProvider = ({ children }) => {
     } finally {
       setIsConnecting(false);
     }
-  }, [resolveOnChainRole]);
+  }, [resolveOnboardingRole, resolveOnChainRole]);
 
   const disconnectWallet = useCallback(() => {
     resetWalletState();
@@ -149,7 +177,8 @@ export const WalletProvider = ({ children }) => {
 
         const nextProvider = new BrowserProvider(window.ethereum);
         const nextSigner = await nextProvider.getSigner();
-        const resolvedRole = await resolveOnChainRole(nextProvider, accounts[0]);
+        const resolvedOnChainRole = await resolveOnChainRole(nextProvider, accounts[0]);
+        const resolvedOnboardingRole = resolvedOnChainRole ? null : resolveOnboardingRole(accounts[0]);
 
         if (!mounted) {
           return;
@@ -158,7 +187,13 @@ export const WalletProvider = ({ children }) => {
         setAccount(accounts[0]);
         setProvider(nextProvider);
         setSigner(nextSigner);
-        setOnChainRole(resolvedRole);
+        setOnChainRole(resolvedOnChainRole);
+        setOnboardingRole(resolvedOnboardingRole);
+
+        if (resolvedOnChainRole) {
+          localStorage.removeItem(getOnboardingRoleStorageKey(accounts[0]));
+        }
+
         localStorage.setItem('walletConnected', 'true');
       } catch (err) {
         if (mounted) {
@@ -188,18 +223,20 @@ export const WalletProvider = ({ children }) => {
       window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
       window.ethereum.removeListener('chainChanged', handleChainChanged);
     };
-  }, [resetWalletState, resolveOnChainRole]);
+  }, [resetWalletState, resolveOnboardingRole, resolveOnChainRole]);
 
   const value = {
     account,
     provider,
     signer,
     onChainRole,
+    onboardingRole,
     userRole,
     roleSource,
     isConnecting,
     error,
     connectWallet,
+    chooseOnboardingRole,
     disconnectWallet,
     isConnected: !!account,
   };

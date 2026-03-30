@@ -25,12 +25,16 @@ const RoleGate = ({ allowedRoles, children, title }) => {
   }
 
   if (!allowedRoles.includes(userRole)) {
+    const helpText = userRole === USER_ROLES.UNASSIGNED
+      ? 'Complete onboarding from Dashboard to choose how you want to use this account.'
+      : 'Switch role from the header if you are testing flows.';
+
     return (
       <div className="max-w-3xl mx-auto px-6 py-12">
         <div className="card text-center py-10">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Role Access Restricted</h2>
           <p className="text-gray-600 mb-3">{title} is not available for your current role.</p>
-          <p className="text-sm text-gray-500">Switch role from the header if you are testing flows.</p>
+          <p className="text-sm text-gray-500">{helpText}</p>
         </div>
       </div>
     );
