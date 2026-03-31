@@ -9,8 +9,8 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 | Stephanie | React Frontend |
 | Shina | EscrowContract.sol · DisputeResolver.sol |
 | Kai Min | ReputationSBT.sol · Chainlink integration |
-| Nicholas | Report Writing |
-| Crystal | Project Demo |
+| Nicholas | Report Writing · System Architecture |
+| Crystal | Demo Recording · UI Testing |
 
 ## Deployed Contracts (Sepolia Testnet)
 
@@ -20,6 +20,19 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 | EscrowContract | `0x005413203a49105B57c124C327Ae275B33BA86A0` | [View](https://sepolia.etherscan.io/address/0x005413203a49105B57c124C327Ae275B33BA86A0#code) |
 | DisputeResolver | `0x9Fb3c076dDCA4Ef17CF552C2AD52D11606595C8A` | [View](https://sepolia.etherscan.io/address/0x9Fb3c076dDCA4Ef17CF552C2AD52D11606595C8A#code) |
 | Chainlink ETH/USD | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | Sepolia feed |
+
+## Reputation Tier System
+
+The freelancer's SBT tier is read directly by `EscrowContract` to enforce escrow terms on-chain.
+
+| Tier | Name | Jobs Completed | Escrow Cap | Slippage Buffer |
+|------|------|---------------|------------|-----------------|
+| 0 | New | 0 | $500 USD | 2.00% |
+| 1 | Established | 1 – 4 | $2,000 USD | 1.50% |
+| 2 | Trusted | 5 – 9 | $10,000 USD | 1.00% |
+| 3 | Elite | 10+ | Uncapped | 0.50% |
+
+Tiers are computed from on-chain job history and cannot be transferred or spoofed. The SBT is non-transferable (ERC-721 soulbound).
 
 ---
 
@@ -73,25 +86,25 @@ cp .env.example .env
 
 Fill in your values:
 ```
+# Required for contract deployment only
 ALCHEMY_SEPOLIA_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
 PRIVATE_KEY=YOUR_WALLET_PRIVATE_KEY_WITHOUT_0x
 ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY
 ARBITRATOR_ADDRESS=YOUR_ARBITRATOR_WALLET_ADDRESS
 
-# Frontend (Vite) Variables
-VITE_ESCROW_ADDRESS=0x...
-VITE_DISPUTE_ADDRESS=0x...
-VITE_PRICEFEED_ADDRESS=0x...
-VITE_SBT_ADDRESS=0x...
-VITE_PINATA_JWT=YOUR_PINATA_JWT_TOKEN
-VITE_IPFS_GATEWAY=https://ipfs.io/ipfs/
-VITE_RPC_URL=${ALCHEMY_SEPOLIA_URL}
+# Required for frontend
+VITE_ESCROW_ADDRESS=0x005413203a49105B57c124C327Ae275B33BA86A0
+VITE_DISPUTE_ADDRESS=0x9Fb3c076dDCA4Ef17CF552C2AD52D11606595C8A
+VITE_PRICEFEED_ADDRESS=0x1AA8818DA24CbB18b8BB4D7e56643C47447f9Da6
+VITE_SBT_ADDRESS=0x3B8784D847d9Fa037f4ff3FF0768A06aE31c2698
+VITE_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
 VITE_CHAIN_ID=11155111
 ```
 
 > Get a free Alchemy API key at https://alchemy.com
 > Get a free Etherscan API key at https://etherscan.io/myapikey
-> Generate a Pinata JWT for IPFS uploads at https://app.pinata.cloud/developers/api-keys
+
+> **Note for frontend-only setup (e.g. demo recording):** You only need the `VITE_` variables above. The `ALCHEMY_SEPOLIA_URL`, `PRIVATE_KEY`, `ETHERSCAN_API_KEY`, and `ARBITRATOR_ADDRESS` are only required if you are deploying or verifying contracts.
 
 ---
 
@@ -116,7 +129,7 @@ ReputationSBT
 
   ...individual test cases...
 
-  50 passing
+  90 passing
 ```
 
 If your local count differs slightly after future edits, the key success signal is that all suites pass with 0 failing.
@@ -152,15 +165,20 @@ npx hardhat run scripts/deploy.js --network sepolia
 
 After deploying, verify on Etherscan:
 ```bash
-npx hardhat verify --network sepolia <MOCK_SBT_ADDRESS>
+npx hardhat verify --network sepolia <SBT_ADDRESS>
 
 npx hardhat verify --network sepolia <ESCROW_ADDRESS> \
   "0x694AA1769357215DE4FAC081bf1f309aDC325306" \
-  "<MOCK_SBT_ADDRESS>"
+  "<SBT_ADDRESS>"
 
 npx hardhat verify --network sepolia <DISPUTE_ADDRESS> \
   "<ESCROW_ADDRESS>" \
   "<ARBITRATOR_ADDRESS>"
+```
+
+After deploying, seed demo wallet tiers:
+```bash
+npx hardhat run scripts/seedTiers.js --network sepolia
 ```
 
 ---
@@ -168,35 +186,36 @@ npx hardhat verify --network sepolia <DISPUTE_ADDRESS> \
 ## Project Structure
 ```
 contracts/
-  ChainlinkPriceFeed.sol    — Chainlink ETH/USD feed wrapper
-  EscrowContract.sol        — Escrow logic, USD-denominated milestones
-  DisputeResolver.sol       — Arbitrator role and dispute resolution
-  ReputationSBT.sol         — Non-transferable reputation NFT (SBT)
+  ChainlinkPriceFeed.sol     — Chainlink ETH/USD feed wrapper
+  EscrowContract.sol         — Escrow logic, USD-denominated milestones
+  DisputeResolver.sol        — Arbitrator role and dispute resolution
+  ReputationSBT.sol          — Non-transferable reputation NFT (SBT)
   interfaces/
-    IReputationSBT.sol      — Interface for SBT contract
+    IReputationSBT.sol       — Interface for SBT contract
   mocks/
-    MockPriceFeed.sol       — Mock Chainlink feed for testing
-    MockReputationSBT.sol   — Mock SBT for testing
+    MockPriceFeed.sol        — Mock Chainlink feed for testing only
+    MockReputationSBT.sol    — Mock SBT for testing only
 scripts/
-  deploy.js                 — Deployment script
+  deploy.js                  — Deployment script
+  seedTiers.js               — Seeds demo wallet tiers on ReputationSBT
 test/
   ChainlinkPriceFeed.test.js — Chainlink feed wrapper tests
-  DisputeResolver.test.js   — Dispute resolution tests
-  EscrowContract.test.js    — Escrow workflow tests
-  ReputationSBT.test.js     — Reputation SBT tests
-frontend/                   — React frontend
-.env.example                — Environment variable template
-hardhat.config.js           — Hardhat configuration
+  DisputeResolver.test.js    — Dispute resolution tests
+  EscrowContract.test.js     — Escrow workflow tests
+  ReputationSBT.test.js      — Reputation SBT tests
+frontend/                    — React frontend
+.env.example                 — Environment variable template
+hardhat.config.js            — Hardhat configuration
 ```
 
 ---
 
 ## Smart Contract Architecture
 
-- **EscrowContract** holds ETH in escrow per milestone. Uses Chainlink ETH/USD feed to convert USD milestone values to ETH at funding time. Reads SBT tier to apply slippage buffer.
-- **Escrow metadata** stores a `metadataHash` and `metadataCID` per milestone. The frontend uploads job/milestone title + description JSON to IPFS and links it on-chain during milestone creation.
-- **DisputeResolver** holds the ARBITRATOR_ROLE. Calls `resolveFromDispute()` on Escrow to release or refund funds.
-- **ReputationSBT** mints a non-transferable ERC-721 token per wallet. Returns tier 0–3 which actively adjusts escrow terms.
+- **ReputationSBT** mints a non-transferable ERC-721 token per wallet on first interaction. Computes tier 0–3 from on-chain job history. Tier is read directly by EscrowContract to enforce escrow caps and slippage buffers. Implements a dispute-time freeze mechanism that prevents tier reads during active disputes.
+- **EscrowContract** holds ETH in escrow per milestone. Uses Chainlink ETH/USD feed to convert USD milestone values to ETH at funding time. Reads the freelancer's SBT tier to apply the correct slippage buffer and enforce the escrow cap via `require()`. Implements Chainlink Automation (`checkUpkeep` / `performUpkeep`) for automatic deadline-based refunds.
+- **DisputeResolver** holds the `ARBITRATOR_ROLE`. Calls `resolveFromDispute()` on EscrowContract to release or refund funds. Unfreezes the freelancer's SBT tier after resolution and updates reputation for both parties.
+- **ChainlinkPriceFeed** wraps the Chainlink AggregatorV3 ETH/USD feed with staleness validation (1 hour threshold) and USD-to-ETH conversion logic.
 
 ## Tech Stack
 
@@ -205,9 +224,9 @@ hardhat.config.js           — Hardhat configuration
 | Blockchain | Ethereum Sepolia |
 | Smart contracts | Solidity ^0.8.20 |
 | Security libraries | OpenZeppelin v5 |
-| Oracle | Chainlink ETH/USD |
+| Oracle | Chainlink ETH/USD + Automation |
 | Development | Hardhat v2 |
 | Testing | Mocha + Chai |
 | Frontend | React + ethers.js v6 |
 | Wallet | MetaMask |
-| Off-chain storage | IPFS / Pinata |
+| Off-chain storage | IPFS |
