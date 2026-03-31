@@ -9,8 +9,8 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 | Stephanie | React Frontend |
 | Shina | EscrowContract.sol · DisputeResolver.sol |
 | Kai Min | ReputationSBT.sol · Chainlink integration |
-| Nicholas | Report Writing · System Architecture |
-| Crystal | Demo Recording · UI Testing |
+| Nicholas | Report Writing |
+| Crystal | Demo Recording |
 
 ## Deployed Contracts (Sepolia Testnet)
 
@@ -61,6 +61,7 @@ npx hardhat test
 - npm v8+
 - MetaMask browser extension
 - Sepolia testnet ETH (get from https://sepolia-faucet.pk910.de/)
+- Pinata account for IPFS uploads (free at https://app.pinata.cloud)
 
 ---
 
@@ -97,12 +98,22 @@ VITE_ESCROW_ADDRESS=0x005413203a49105B57c124C327Ae275B33BA86A0
 VITE_DISPUTE_ADDRESS=0x9Fb3c076dDCA4Ef17CF552C2AD52D11606595C8A
 VITE_PRICEFEED_ADDRESS=0x1AA8818DA24CbB18b8BB4D7e56643C47447f9Da6
 VITE_SBT_ADDRESS=0x3B8784D847d9Fa037f4ff3FF0768A06aE31c2698
-VITE_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+VITE_PINATA_JWT=YOUR_PINATA_JWT_TOKEN
+VITE_IPFS_GATEWAY=https://ipfs.io/ipfs/
 VITE_CHAIN_ID=11155111
 ```
 
 > Get a free Alchemy API key at https://alchemy.com
 > Get a free Etherscan API key at https://etherscan.io/myapikey
+
+### Getting your Pinata JWT
+
+Job and milestone metadata (title, description) are uploaded to IPFS via Pinata when creating a job. This is required for `CreateJob` to work.
+
+1. Go to https://app.pinata.cloud and sign up for free
+2. Navigate to **API Keys** → **New Key**
+3. Enable **pinJSONToIPFS**
+4. Copy the **JWT** token and paste it as `VITE_PINATA_JWT` in your `.env`
 
 > **Note for frontend-only setup (e.g. demo recording):** You only need the `VITE_` variables above. The `ALCHEMY_SEPOLIA_URL`, `PRIVATE_KEY`, `ETHERSCAN_API_KEY`, and `ARBITRATOR_ADDRESS` are only required if you are deploying or verifying contracts.
 
@@ -229,4 +240,4 @@ hardhat.config.js            — Hardhat configuration
 | Testing | Mocha + Chai |
 | Frontend | React + ethers.js v6 |
 | Wallet | MetaMask |
-| Off-chain storage | IPFS |
+| Off-chain storage | IPFS / Pinata |
