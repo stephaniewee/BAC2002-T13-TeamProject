@@ -4,13 +4,13 @@ A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
 
 ## Team
 
-| Member | Role |
-|--------|------|
-| Stephanie | React Frontend |
-| Shina | EscrowContract.sol · DisputeResolver.sol |
-| Kai Min | ReputationSBT.sol · Chainlink integration |
-| Nicholas | Report Writing |
-| Crystal | Demo Recording |
+| Member | Student ID | Role |
+|--------|------------|------|
+| Wee Jia Xin, Stephanie | 2402628 | React Frontend |
+| Shina Shih Xin Rong | 2402781| EscrowContract.sol · DisputeResolver.sol |
+| Liew Kai Min | 2402800 | ReputationSBT.sol · Chainlink integration |
+| Nicholas Chu | 2401588 | Report Writing |
+| Crystal Ng Jing Jing| 2401398 | Demo Recording |
 
 ## Deployed Contracts (Sepolia Testnet)
 
