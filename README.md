@@ -1,6 +1,7 @@
 # FreelanceChain — BAC2002 Team 13
 
 A decentralised freelance escrow DApp built on Ethereum Sepolia testnet.
+Link to demo recording:
 
 ## Team
 
